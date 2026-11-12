@@ -1,0 +1,74 @@
+name: Software CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "software/**"
+      - ".github/workflows/software-ci.yml"
+  pull_request:
+    paths:
+      - "software/**"
+      - ".github/workflows/software-ci.yml"
+
+# Batalkan run lama kalau ada push baru di branch yang sama
+concurrency:
+  group: software-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: software/desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: software/desktop/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: software/desktop/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: software/desktop/src-tauri
+
+      - name: Install dependency Linux
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install dependency frontend
+        run: pnpm install --frozen-lockfile
+
+      # Harus sebelum cargo check, karena Tauri butuh folder dist ada saat compile
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Cargo check
+        working-directory: software/desktop/src-tauri
+        run: cargo check
