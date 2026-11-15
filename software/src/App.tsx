@@ -1,91 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useMemo, useState } from "react";
+import { Icon } from "./components/Icon";
+import { SensorCard } from "./components/SensorCard";
+import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
+import { useTelemetry } from "./hooks/useTelemetry";
+import type { CommandState, Phase } from "./types/telemetry";
 import "./App.css";
-
-type Phase = "Initialization" | "Flight" | "Recovery";
-type CommandState = "safe" | "armed" | "firing" | "complete";
-type TelemetryPoint = {
-  time: number;
-  temperature: number;
-  pressure: number;
-  acceleration: number;
-  altitude: number;
-};
-
-const dummySeries: TelemetryPoint[] = Array.from({ length: 18 }, (_, index) => ({
-  time: index,
-  temperature: 24.2 + Math.sin(index / 2.4) * 1.2 + index * 0.06,
-  pressure: 100.9 - Math.sin(index / 2.8) * 0.8 - index * 0.04,
-  acceleration: 0.96 + Math.sin(index / 2.2) * 0.08,
-  altitude: 420 + index * 48 + Math.sin(index) * 10,
-}));
-
-function Icon({ name }: { name: "download" | "chevron" | "radio" | "shield" | "send" }) {
-  const paths = {
-    download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M4 20h16" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />,
-    radio: <><circle cx="12" cy="12" r="2" /><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" /></>,
-    shield: <><path d="M12 3 19 6v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></>,
-    send: <><path d="m21 3-7.5 18-3.5-7-7-3.5L21 3Z" /><path d="M10 14 21 3" /></>,
-  };
-  return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
-}
-
-function SensorCard({
-  title,
-  value,
-  unit,
-  color = "#3b6ff5",
-  data,
-  dataKey,
-  domain,
-  hasData,
-}: {
-  title: string;
-  value: string;
-  unit: string;
-  color?: string;
-  data: TelemetryPoint[];
-  dataKey: "temperature" | "pressure" | "acceleration";
-  domain?: [number, number];
-  hasData: boolean;
-}) {
-  return (
-    <article className="card sensor-card">
-      <div className="card-heading"><span>{title}</span><b className="live-tag">{hasData ? "LIVE" : "NO DATA"}</b></div>
-      <div className="sensor-value">{value}<small>{unit}</small></div>
-      <div className="chart">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 2, left: -32, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="#edf0f5" />
-            <YAxis domain={domain} hide />
-            <XAxis dataKey="time" hide />
-            <Tooltip content={() => null} />
-            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="chart-axis"><span>T−12s</span><span>T−0s</span></div>
-    </article>
-  );
-}
 
 function App() {
   const [phase, setPhase] = useState<Phase>("Initialization");
   const [connected, setConnected] = useState(false);
-  const [dataSource, setDataSource] = useState("COM4 · USB");
+  const [dataSource, setDataSource] = useState(DEFAULT_DATA_SOURCE);
   const [commandState, setCommandState] = useState<CommandState>("safe");
-  const [series, setSeries] = useState<TelemetryPoint[]>([]);
-  const [packetCount, setPacketCount] = useState(0);
   const [log, setLog] = useState("No telemetry data received");
+<<<<<<< Updated upstream
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -101,22 +28,34 @@ function App() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [connected]);
+=======
+  const { series, packetCount, loadDummyData, clearTelemetry: clearTelemetryData } = useTelemetry({ connected, dataSource });
+>>>>>>> Stashed changes
 
   const altitude = series.length > 0 ? series[series.length - 1].altitude : null;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
+<<<<<<< Updated upstream
+=======
+  const sourceAvailable = dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
+>>>>>>> Stashed changes
 
-  const loadDummyData = () => {
-    setSeries(dummySeries);
-    setPacketCount(28492);
+  const startDummyData = () => {
+    loadDummyData();
     setConnected(true);
     setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
   };
 
   const clearTelemetry = () => {
     setConnected(false);
+<<<<<<< Updated upstream
     setSeries([]);
     setPacketCount(0);
+=======
+    setCommandState("safe");
+    setPhase("Initialization");
+    clearTelemetryData();
+>>>>>>> Stashed changes
     setLog("Telemetry stopped — no data received");
   };
 
@@ -127,10 +66,21 @@ function App() {
 
   const selectDataSource = (source: string) => {
     setDataSource(source);
+<<<<<<< Updated upstream
     if (source === "Dummy data") {
       loadDummyData();
     } else {
       clearTelemetry();
+=======
+    clearTelemetry();
+    setLog(source === DUMMY_SOURCE ? "Dummy data selected — press Start to stream" : "No telemetry data received");
+  };
+
+  const startTelemetry = () => {
+    if (dataSource === DUMMY_SOURCE) {
+      startDummyData();
+      return;
+>>>>>>> Stashed changes
     }
   };
 
