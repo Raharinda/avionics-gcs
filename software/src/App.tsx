@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { Icon } from "./components/Icon";
+import { RocketModel3D } from "./components/RocketModel3D";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
 import { useTelemetry } from "./hooks/useTelemetry";
@@ -22,6 +23,7 @@ function App() {
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
   const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
   const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
+  const [hasCalibrated, setHasCalibrated] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
@@ -78,6 +80,7 @@ function App() {
       } else if (event.payload.startsWith("CALIBRATION_COMPLETE:")) {
         setIsCalibrationStarted(true);
         setIsCalibrationComplete(true);
+        setHasCalibrated(true);
         setLog("Calibration complete — offsets saved to ESP32");
       } else if (event.payload.startsWith("CALIBRATION_ERROR:")) {
         setIsCalibrationStarted(false);
@@ -93,6 +96,9 @@ function App() {
   const altitude =
     series.length > 0 ? series[series.length - 1].altitude : null;
   const latestTelemetry = series.length > 0 ? series[series.length - 1] : null;
+  const modelRoll = hasCalibrated && latestTelemetry ? latestTelemetry.roll : 0;
+  const modelPitch = hasCalibrated && latestTelemetry ? latestTelemetry.pitch : 0;
+  const modelYaw = hasCalibrated && latestTelemetry ? latestTelemetry.yaw : 0;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
   const sourceAvailable =
@@ -209,6 +215,7 @@ function App() {
     }
     setIsCalibrationStarted(true);
     setIsCalibrationComplete(false);
+    setHasCalibrated(false);
     setLog("Calibration started — keep vehicle steady");
   };
   const finishCalibration = async () => {
@@ -221,6 +228,7 @@ function App() {
       }
     }
     setIsCalibrationComplete(true);
+    setHasCalibrated(true);
     setLog("Calibration complete — offsets saved");
   };
   const closeCalibration = () => {
@@ -395,31 +403,27 @@ function App() {
               <div className="section-label">ATTITUDE</div>
               <div className="card-title-row">
                 <h2>Rocket view</h2>
-                <span className="axis">Z ↑</span>
+                <span className="axis">
+                  {hasCalibrated ? "CALIBRATED · Z ↑" : "Z ↑"}
+                </span>
               </div>
               <div className="rocket-stage">
                 <div className="orbit orbit-one" />
                 <div className="orbit orbit-two" />
-                <div className="rocket">
-                  <div className="nose" />
-                  <div className="body" />
-                  <div className="fin left" />
-                  <div className="fin right" />
-                  <div className="engine" />
-                </div>
+                <RocketModel3D roll={modelRoll} pitch={modelPitch} yaw={modelYaw} />
               </div>
               <div className="attitude-values">
                 <div>
                   <span>ROLL</span>
-                  <b>—</b>
+                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
                   <span>PITCH</span>
-                  <b>—</b>
+                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.pitch.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
                   <span>YAW</span>
-                  <b>—</b>
+                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
                 </div>
               </div>
             </article>

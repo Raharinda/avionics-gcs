@@ -10,6 +10,12 @@ export const dummySeries: TelemetryPoint[] = Array.from({ length: 18 }, (_, inde
   acceleration: 0.96 + Math.sin(index / 2.2) * 0.08,
   gyroscope: 2.4 + Math.sin(index / 1.8) * 1.5,
   altitude: 420 + index * 48 + Math.sin(index) * 10,
+  accelX: 0,
+  accelY: 0,
+  accelZ: 9.80665,
+  roll: 0,
+  pitch: 0,
+  yaw: 0,
 }));
 
 export function createDummyTelemetryPoint(lastTime: number): TelemetryPoint {
@@ -20,5 +26,11 @@ export function createDummyTelemetryPoint(lastTime: number): TelemetryPoint {
     acceleration: 0.98 + Math.sin(Date.now() / 900) * 0.06,
     gyroscope: 2.4 + Math.sin(Date.now() / 1100) * 1.5,
     altitude: 1248 + Math.sin(Date.now() / 3000) * 8,
+    accelX: 0,
+    accelY: 0,
+    accelZ: 9.80665,
+    roll: 0,
+    pitch: 0,
+    yaw: 0,
   };
 }
