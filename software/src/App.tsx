@@ -11,6 +11,9 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [portConnected, setPortConnected] = useState(false);
   const [dataSource, setDataSource] = useState(DEFAULT_DATA_SOURCE);
+  const [serialPorts, setSerialPorts] = useState<
+    { name: string; description?: string }[]
+  >([]);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
   const sourceState = useRef(
@@ -28,7 +31,26 @@ function App() {
     packetCount,
     loadDummyData,
     clearTelemetry: clearTelemetryData,
+    startSerialListener,
+    stopSerialListener,
+    listSerialPorts,
   } = useTelemetry({ connected, dataSource });
+
+  const refreshSerialPorts = async () => {
+    try {
+      setSerialPorts(await listSerialPorts());
+    } catch (error) {
+      setLog(`Serial port discovery error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSerialPorts();
+    const timer = window.setInterval(() => {
+      void refreshSerialPorts();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const altitude =
     series.length > 0 ? series[series.length - 1].altitude : null;
@@ -65,24 +87,38 @@ function App() {
     setLog("Telemetry stopped — no data received");
   };
 
-  const stopTelemetry = () => {
+  const stopTelemetry = async () => {
+    if (dataSource !== DUMMY_SOURCE) {
+      await stopSerialListener();
+    }
     clearTelemetry();
   };
 
-  const selectDataSource = (source: string) => {
+  const selectDataSource = async (source: string) => {
+    if (dataSource !== DUMMY_SOURCE) {
+      await stopSerialListener();
+    }
     setDataSource(source);
   };
 
-  const startTelemetry = () => {
+  const startTelemetry = async () => {
     if (dataSource === DUMMY_SOURCE) {
       loadDummyData();
       setConnected(true);
       setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
       return;
     }
-    setPortConnected(true);
-    setConnected(true);
-    setLog(`${dataSource} selected — waiting for telemetry data`);
+    const portName = dataSource.split(" · ")[0];
+    try {
+      const message = await startSerialListener(portName);
+      setPortConnected(true);
+      setConnected(true);
+      setLog(`${message} — waiting for telemetry data`);
+    } catch (error) {
+      setPortConnected(false);
+      setConnected(false);
+      setLog(`Serial error: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const armSystem = () => {
@@ -156,10 +192,20 @@ function App() {
             value={dataSource}
             onChange={(event) => selectDataSource(event.target.value)}
           >
-            <option>COM4 · USB</option>
-            <option>COM3 · USB</option>
+            {dataSource !== DUMMY_SOURCE &&
+              !serialPorts.some(
+                (port) => `${port.name} · ${port.description ?? "Serial"}` === dataSource,
+              ) && <option value={dataSource}>{dataSource}</option>}
+            {serialPorts.map((port) => (
+              <option key={port.name} value={`${port.name} · ${port.description ?? "Serial"}`}>
+                {port.name} · {port.description ?? "Serial"}
+              </option>
+            ))}
             <option>Dummy data</option>
           </select>
+          <button className="download" type="button" onClick={() => void refreshSerialPorts()}>
+            Refresh ports
+          </button>
           <button className="download">
             <Icon name="download" /> Download CSV
           </button>
