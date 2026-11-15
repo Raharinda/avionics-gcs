@@ -20,6 +20,13 @@ function App() {
   >([]);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
+  const [rawSerialLine, setRawSerialLine] = useState("");
+  const latestRawSerialLine = useRef("");
+  const rawFrameLines = useRef<string[]>([]);
+  const latestRawFrame = useRef("");
+  const [rawSerialHistory, setRawSerialHistory] = useState<string[]>([]);
+  const [isSerialHistoryOpen, setIsSerialHistoryOpen] = useState(false);
+  const [serialView, setSerialView] = useState<"status" | "raw">("status");
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
   const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
   const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
@@ -70,7 +77,17 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     listen<string>("serial_line", (event) => {
+      latestRawSerialLine.current = event.payload;
+      if (rawFrameLines.current[rawFrameLines.current.length - 1] !== event.payload) {
+        rawFrameLines.current.push(event.payload);
+      }
+      if (event.payload.includes("{") && event.payload.includes("}")) {
+        latestRawFrame.current = rawFrameLines.current.join("\n");
+        rawFrameLines.current = [];
+      }
+      setRawSerialHistory((history) => [...history.slice(-199), event.payload]);
       if (event.payload === "CALIBRATION_STARTED") {
         setIsCalibrationStarted(true);
         setIsCalibrationComplete(false);
@@ -88,9 +105,28 @@ function App() {
         setLog(`Calibration error — ${event.payload.slice("CALIBRATION_ERROR:".length)}`);
       }
     }).then((cleanup) => {
-      unlisten = cleanup;
+      if (disposed) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
     });
-    return () => unlisten?.();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (latestRawFrame.current) {
+        setRawSerialLine(latestRawFrame.current);
+        latestRawFrame.current = "";
+      } else if (latestRawSerialLine.current) {
+        setRawSerialLine(latestRawSerialLine.current);
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const altitude =
@@ -129,6 +165,11 @@ function App() {
   const clearTelemetry = () => {
     setConnected(false);
     clearTelemetryData();
+    latestRawSerialLine.current = "";
+    rawFrameLines.current = [];
+    latestRawFrame.current = "";
+    setRawSerialLine("");
+    setRawSerialHistory([]);
     setLog("Telemetry stopped — no data received");
   };
 
@@ -726,22 +767,99 @@ function App() {
         </div>
       )}
       <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
-        <span className="log-status">
-          <i /> Serial log
-        </span>
-        <code>{log}</code>
+        <div className="serial-log-heading">
+          <span className="log-status">
+            <i /> Serial log
+          </span>
+          <div className="serial-view-tabs" role="tablist" aria-label="Serial output view">
+            <button
+              className={serialView === "status" ? "active" : ""}
+              type="button"
+              onClick={() => setSerialView("status")}
+              role="tab"
+              aria-selected={serialView === "status"}
+            >
+              Status
+            </button>
+            <button
+              className={serialView === "raw" ? "active" : ""}
+              type="button"
+              onClick={() => setSerialView("raw")}
+              role="tab"
+              aria-selected={serialView === "raw"}
+            >
+              Raw data
+            </button>
+            {serialView === "raw" && (
+              <button
+                className="serial-history-button"
+                type="button"
+                onClick={() => setIsSerialHistoryOpen(true)}
+                disabled={rawSerialHistory.length === 0}
+              >
+                History
+              </button>
+            )}
+          </div>
+        </div>
+        <code>
+          {serialView === "status"
+            ? log
+            : rawSerialLine || "No raw serial data received"}
+        </code>
         {isLogExpanded && (
           <pre>
-            {log}
-            {"\n"}Telemetry source: {dataSource}
-            {"\n"}Port: {portConnected ? "connected" : "disconnected"}
-            {"\n"}Listening: {connected ? "active" : "stopped"}
+            {serialView === "raw"
+              ? rawSerialLine || "No raw serial data received"
+              : `${log}
+Telemetry source: ${dataSource}
+Port: ${portConnected ? "connected" : "disconnected"}
+Listening: ${connected ? "active" : "stopped"}`}
           </pre>
         )}
-        <button onClick={() => setIsLogExpanded(!isLogExpanded)}>
+        <button
+          className="serial-log-expand"
+          type="button"
+          onClick={() => setIsLogExpanded(!isLogExpanded)}
+        >
           <Icon name="send" /> {isLogExpanded ? "Collapse log" : "Expand log"}
         </button>
       </footer>
+      {isSerialHistoryOpen && (
+        <div
+          className="serial-history-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsSerialHistoryOpen(false);
+          }}
+        >
+          <section className="serial-history-modal" role="dialog" aria-modal="true" aria-labelledby="serial-history-title">
+            <div className="serial-history-header">
+              <div>
+                <div className="section-label">RAW SERIAL DATA</div>
+                <h2 id="serial-history-title">Serial history</h2>
+              </div>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setIsSerialHistoryOpen(false)}
+                aria-label="Close serial history"
+              >
+                ×
+              </button>
+            </div>
+            <pre className="serial-history-content">
+              {rawSerialHistory.join("\n") || "No raw serial data received"}
+            </pre>
+            <div className="serial-history-footer">
+              {rawSerialHistory.length} lines stored
+              <button type="button" onClick={() => setRawSerialHistory([])}>
+                Clear history
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
