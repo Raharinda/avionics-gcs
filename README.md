@@ -30,11 +30,11 @@ flowchart LR
   E --> F[CSV Export]
 ```
 
-| Komponen         | Peran                                                  |
-| ---------------- | ------------------------------------------------------ |
-| ESP32 Avionics   | Terpasang di roket, membaca sensor, kirim via ESP-NOW  |
-| ESP32 GCS        | Menerima data ESP-NOW, meneruskan ke laptop via Serial |
-| Aplikasi Desktop | Dashboard telemetry, penyimpanan data, ekspor, kontrol |
+| Komponen         | Peran                                                    |
+| ---------------- | -------------------------------------------------------- |
+| ESP32 Avionics   | Terpasang di roket, membaca sensor, kirim via ESP-NOW    |
+| ESP32 GCS        | Menerima data ESP-NOW, meneruskan ke laptop via Serial   |
+| Aplikasi Desktop | Dashboard telemetry, penyimpanan data, ekspor, kontrol   |
 
 Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust backend.
 
@@ -42,16 +42,15 @@ Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust 
 
 ## 📊 Status Project
 
-| Bagian                     | Status        |
-| -------------------------- | ------------- |
-| Struktur repository        | Selesai       |
-| Setup Tauri 2 + React + TS | Selesai       |
-| Firmware Avionics dan GCS  | Belum dimulai |
-| Serial reader (Rust)       | Belum dimulai |
-| Dashboard real-time        | Belum dimulai |
-| SQLite dan CSV export      | Belum dimulai |
-| GitHub Actions (CI/CD)     | Rencana       |
-| Ground Control             | Rencana       |
+| Bagian                      | Status         |
+| --------------------------- | -------------- |
+| Struktur repository         | Selesai        |
+| Setup Tauri 2 + React + TS  | Selesai        |
+| Firmware Avionics dan GCS   | Belum dimulai  |
+| Serial reader (Rust)        | Belum dimulai  |
+| Dashboard real-time         | Belum dimulai  |
+| SQLite dan CSV export       | Belum dimulai  |
+| Ground Control              | Rencana        |
 
 Hal yang masih ditentukan nanti: sensor tambahan selain MPU6050, sampling rate, frekuensi kirim telemetry, skema database, pinout, dan mekanisme otorisasi kontrol.
 
@@ -62,6 +61,7 @@ Hal yang masih ditentukan nanti: sensor tambahan selain MPU6050, sampling rate, 
 ### Prerequisites
 
 - Node.js (LTS)
+- pnpm (aktifkan lewat Corepack, lihat di bawah)
 - Rust (install lewat [rustup](https://rustup.rs))
 - Git
 - Dependency Tauri sesuai OS:
@@ -72,11 +72,19 @@ Hal yang masih ditentukan nanti: sensor tambahan selain MPU6050, sampling rate, 
 
 ### Quick Start (Desktop)
 
+Aktifkan pnpm lewat Corepack (sekali saja):
+
+```bash
+corepack enable
+```
+
+Lalu jalankan:
+
 ```bash
 git clone <repository-url>
-cd <nama-repo>/software/desktop
-npm ci
-npm run tauri dev
+cd <nama-repo>/software
+pnpm install --frozen-lockfile
+pnpm tauri dev
 ```
 
 Build Rust pertama kali bisa memakan waktu beberapa menit, itu normal.
@@ -84,9 +92,9 @@ Build Rust pertama kali bisa memakan waktu beberapa menit, itu normal.
 ### Commands
 
 ```bash
-npm run tauri dev       # Menjalankan aplikasi desktop (mode development)
-npm run build           # Build frontend
-npm run tauri build     # Build installer aplikasi desktop
+pnpm tauri dev          # Menjalankan aplikasi desktop (mode development)
+pnpm build              # Build frontend
+pnpm tauri build        # Build installer aplikasi desktop
 cargo check             # Cek kode Rust (jalankan dari src-tauri/)
 ```
 
@@ -158,20 +166,16 @@ flowchart LR
 
 ### 📋 Pull & Push Schema
 
-| Step | Action                               | Description                 |
-| ---- | ------------------------------------ | --------------------------- |
-| 1️⃣   | `git switch main`                    | Pindah ke branch `main`     |
-| 2️⃣   | `git pull --ff-only origin main`     | Ambil perubahan terbaru     |
-| 3️⃣   | `git switch -c feat/nama-fitur`      | Buat feature branch         |
-| 4️⃣   | 💻 Code                              | Mulai coding                |
-| 5️⃣   | `git commit -m "feat: message"`      | Commit perubahan            |
-| 6️⃣   | `git push -u origin feat/nama-fitur` | Push feature branch         |
-| 7️⃣   | 📝 Create PR                         | Buat Pull Request ke `main` |
-| 🏁   | ✅ Done!                             | Selesai!                    |
-
-### Release
-
-Release desktop dipicu oleh Git tag dengan pola `v*` (contoh: `v0.1.0`). Workflow ini masih dalam tahap perencanaan.
+| Step | Action                               | Description                   |
+| ---- | ------------------------------------ | ----------------------------- |
+| 1️⃣   | `git switch main`                    | Pindah ke branch `main`       |
+| 2️⃣   | `git pull --ff-only origin main`     | Ambil perubahan terbaru       |
+| 3️⃣   | `git switch -c feat/nama-fitur`      | Buat feature branch           |
+| 4️⃣   | 💻 Code                              | Mulai coding                  |
+| 5️⃣   | `git commit -m "feat: message"`      | Commit perubahan              |
+| 6️⃣   | `git push -u origin feat/nama-fitur` | Push feature branch           |
+| 7️⃣   | 📝 Create PR                         | Buat Pull Request ke `main`   |
+| 🏁   | ✅ Done!                             | Selesai!                      |
 
 ---
 
@@ -215,7 +219,7 @@ feat(avionics): add espnow sender
 feat(desktop): add serial reader
 fix(gcs): handle malformed packet
 docs(readme): update installation guide
-chore(ci): add software workflow
+chore(deps): update dependencies
 ```
 
 ---
@@ -224,18 +228,15 @@ chore(ci): add software workflow
 
 ```text
 📦 project-root/
-├── 📂 .github/
-│   └── 📂 workflows/          # GitHub Actions (hardware-ci, software-ci, desktop-release)
 ├── 📂 hardware/
 │   ├── 📂 avionics/
 │   │   └── 📂 firmware/       # Firmware ESP32 di roket
 │   └── 📂 gcs/
 │       └── 📂 firmware/       # Firmware ESP32 di GCS
 ├── 📂 software/
-│   └── 📂 desktop/
-│       ├── 📂 src/            # Frontend React + TypeScript
-│       ├── 📂 src-tauri/      # Backend Rust (Tauri 2)
-│       └── 📄 package.json
+│   ├── 📂 src/                # Frontend React + TypeScript
+│   ├── 📂 src-tauri/          # Backend Rust (Tauri 2)
+│   └── 📄 package.json
 ├── 📄 README.md
 └── 📄 .gitignore
 ```
@@ -248,14 +249,14 @@ Dokumentasi protokol dan konfigurasi hardware ditulis di README masing-masing ba
 
 ### Naming Rules
 
-| Type            | Convention       | Example              |
-| --------------- | ---------------- | -------------------- |
-| React component | PascalCase       | `TelemetryChart.tsx` |
-| Functions (TS)  | camelCase        | `parsePacket()`      |
-| Variables (TS)  | camelCase        | `lastSequence`       |
-| Constants       | UPPER_SNAKE_CASE | `TELEMETRY_RATE_HZ`  |
-| Folders         | kebab-case       | `flight-history/`    |
-| Rust / C++      | snake_case       | `read_serial_port()` |
+| Type            | Convention       | Example                |
+| --------------- | ---------------- | ---------------------- |
+| React component | PascalCase       | `TelemetryChart.tsx`   |
+| Functions (TS)  | camelCase        | `parsePacket()`        |
+| Variables (TS)  | camelCase        | `lastSequence`         |
+| Constants       | UPPER_SNAKE_CASE | `TELEMETRY_RATE_HZ`    |
+| Folders         | kebab-case       | `flight-history/`      |
+| Rust / C++      | snake_case       | `read_serial_port()`   |
 
 ### General Rules
 
@@ -263,7 +264,8 @@ Dokumentasi protokol dan konfigurasi hardware ditulis di README masing-masing ba
 - Frontend tidak mengakses serial langsung, semua lewat backend Rust.
 - Jangan commit secret, file `.db`, atau data hasil pengujian.
 - Jangan hardcode pinout atau konfigurasi hardware di banyak tempat, taruh di satu file konfigurasi.
-- Pastikan `npm run build` dan `cargo check` lulus sebelum membuat Pull Request.
+- Gunakan `pnpm` saja, jangan campur dengan `npm` atau `yarn`. Commit `pnpm-lock.yaml`.
+- Pastikan `pnpm build` dan `cargo check` lulus sebelum membuat Pull Request.
 
 ---
 
