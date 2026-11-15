@@ -9,6 +9,7 @@ import "./App.css";
 function App() {
   const [phase, setPhase] = useState<Phase>("Initialization");
   const [connected, setConnected] = useState(false);
+  const [portConnected, setPortConnected] = useState(false);
   const [dataSource, setDataSource] = useState(DEFAULT_DATA_SOURCE);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
@@ -26,22 +27,20 @@ function App() {
   const sourceAvailable =
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
   const connectionReady =
-    dataSource === DUMMY_SOURCE || (sourceAvailable && connected);
+    dataSource === DUMMY_SOURCE || (sourceAvailable && portConnected);
   const clearTelemetry = () => {
     setConnected(false);
-    setCommandState("safe");
-    setPhase("Initialization");
     clearTelemetryData();
     setLog("Telemetry stopped — no data received");
   };
 
   const stopTelemetry = () => {
     clearTelemetry();
-    setDataSource(DEFAULT_DATA_SOURCE);
   };
 
   const selectDataSource = (source: string) => {
     setDataSource(source);
+    setPortConnected(false);
     clearTelemetry();
     setLog(
       source === DUMMY_SOURCE
@@ -57,6 +56,7 @@ function App() {
       setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
       return;
     }
+    setPortConnected(true);
     setConnected(true);
     setLog(`${dataSource} selected — waiting for telemetry data`);
   };
@@ -107,8 +107,8 @@ function App() {
           <div className="brand-mark">G</div>
           <strong>AVIONICS GCS</strong>
           <span className="connection-pill">
-            <i className={connected ? "connected" : ""} />
-            {connected ? "Connected" : "Disconnected"}
+            <i className={portConnected ? "connected" : ""} />
+            {portConnected ? "Port connected" : "Port disconnected"}
           </span>
         </div>
         <nav className="phase-nav">
@@ -324,11 +324,12 @@ function App() {
               <span className="step-number">01</span>
               <div>
                 <b>Arm system</b>
-                <small>Enable fire controls</small>
+                <small>{connectionReady ? "Enable fire controls" : "Connect port first"}</small>
               </div>
               <button
                 className={`toggle ${commandState !== "safe" ? "on" : ""}`}
                 onClick={armSystem}
+                disabled={!connectionReady || commandState !== "safe"}
                 aria-label="Arm system"
               >
                 <span />
@@ -338,11 +339,11 @@ function App() {
               <span className="step-number">02</span>
               <div>
                 <b>Fire charge</b>
-                <small>Arm system first</small>
+                <small>{connectionReady ? "Arm system first" : "Connect port first"}</small>
               </div>
               <button
                 className={`fire-button ${commandState}`}
-                disabled={commandState !== "armed"}
+                disabled={!connectionReady || commandState !== "armed"}
                 onClick={fireCharge}
               >
                 FIRE
@@ -426,7 +427,8 @@ function App() {
           <pre>
             {log}
             {"\n"}Telemetry source: {dataSource}
-            {"\n"}Stream: {connected ? "active" : "stopped"}
+            {"\n"}Port: {portConnected ? "connected" : "disconnected"}
+            {"\n"}Listening: {connected ? "active" : "stopped"}
           </pre>
         )}
         <button onClick={() => setIsLogExpanded(!isLogExpanded)}>
