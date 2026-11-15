@@ -44,8 +44,8 @@ function App() {
     setCommandState("safe");
     setPhase("Initialization");
     setActionMessage(source === DUMMY_SOURCE
-      ? "Dummy data selected — press Start to simulate"
-      : "USB Serial selected — press Start to connect at 115200 baud");
+      ? "Dummy data selected — press Start simulation"
+      : "USB Serial selected — press Connect at 115200 baud");
   };
 
   const startTelemetry = () => {
@@ -122,15 +122,6 @@ function App() {
         </nav>
         <div className="header-actions">
           <div className="utc"><b>--:--:--</b><span>NO UTC DATA</span></div>
-          <select aria-label="Data source" value={dataSource} disabled={connected || busy}
-            onChange={(event) => selectDataSource(event.target.value)}>
-            <option value={DEFAULT_DATA_SOURCE}>Auto · USB</option>
-            {ports.map((port) => <option key={port.name} value={port.name}>{port.label}</option>)}
-            {!ports.some((port) => port.name === dataSource) && dataSource !== DEFAULT_DATA_SOURCE && !simulated &&
-              <option value={dataSource}>{dataSource} · unavailable</option>}
-            <option value={DUMMY_SOURCE}>Dummy data</option>
-          </select>
-          <button className="refresh-ports" onClick={() => void refreshPorts()} disabled={connected || busy} title="Rescan Serial ports">Refresh ports</button>
           <button className="download" onClick={downloadCsv} disabled={!hasTelemetry} title="Export the most recent 120 samples">
             <Icon name="download" /> Download CSV
           </button>
@@ -138,10 +129,33 @@ function App() {
       </header>
 
       <div className="dashboard">
-        <div className="source-summary" aria-live="polite">
-          <span>{simulated ? "SIMULATION" : `${activePort ?? "USB Serial"} · 115200 baud`}</span>
-          <span>{log}</span>
-        </div>
+        <section className="connection-panel" aria-label="Serial connection">
+          <div className="connection-controls">
+            <label htmlFor="serial-source">Telemetry source</label>
+            <select id="serial-source" aria-label="Data source" value={dataSource} disabled={connected || busy}
+              onChange={(event) => selectDataSource(event.target.value)}>
+              <option value={DEFAULT_DATA_SOURCE}>Auto · USB</option>
+              {ports.map((port) => <option key={port.name} value={port.name}>{port.label}</option>)}
+              {!ports.some((port) => port.name === dataSource) && dataSource !== DEFAULT_DATA_SOURCE && !simulated &&
+                <option value={dataSource}>{dataSource} · unavailable</option>}
+              <option value={DUMMY_SOURCE}>Dummy data</option>
+            </select>
+            <button className="refresh-ports" onClick={() => { setActionMessage(null); void refreshPorts(); }}
+              disabled={connected || busy}>Refresh ports</button>
+            <button className="connect-button" onClick={startTelemetry} disabled={connected || busy}>
+              {status === "connecting" ? "Connecting…" : simulated ? "Start simulation" : "Connect"}
+            </button>
+            <button className="disconnect-button" onClick={() => void stopTelemetry()}
+              disabled={(!connected && !busy) || status === "stopping"}>
+              {status === "stopping" ? "Disconnecting…" : status === "connecting" ? "Cancel" : "Disconnect"}
+            </button>
+            <span className="port-count">{ports.filter((port) => port.usb).length} USB Serial detected</span>
+          </div>
+          <div className="source-summary" role="status" aria-live="polite">
+            <span>{simulated ? "SIMULATION" : `${activePort ?? "USB Serial"} · 115200 baud`}</span>
+            <span>{log}</span>
+          </div>
+        </section>
         <section className="metric-row">
           <article className="card metric" title="Barometric estimate relative to the first valid pressure reading of this session">
             <div className="card-heading"><span>Relative altitude</span><b className={`live-tag ${tag.toLowerCase()}`}>{latest?.altitude == null ? "NO DATA" : tag}</b></div>
@@ -221,8 +235,6 @@ function App() {
                 if (simulationTimer.current !== null) window.clearTimeout(simulationTimer.current);
                 setCommandState("safe"); setPhase("Initialization"); setActionMessage(null);
               }}>Reset</button>
-              <button className="start" onClick={startTelemetry} disabled={connected || busy}>Start</button>
-              <button className="stop" onClick={() => void stopTelemetry()} disabled={(!connected && !busy) || status === "stopping"}>Stop</button>
             </div>
           </aside>
         </section>

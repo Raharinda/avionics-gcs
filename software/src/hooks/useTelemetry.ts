@@ -9,13 +9,16 @@ type UseTelemetryOptions = {
   dataSource: string;
 };
 
+// Correlation ID for this app instance; does not require WebView crypto APIs.
+let nextSessionId = 0;
+
 export function useTelemetry({ dataSource }: UseTelemetryOptions) {
   const [series, setSeries] = useState<TelemetryPoint[]>([]);
   const [packetCount, setPacketCount] = useState(0);
   const [status, setStatus] = useState<"disconnected" | "connecting" | "connected" | "stopping">("disconnected");
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [activePort, setActivePort] = useState<string | null>(null);
-  const [message, setMessage] = useState("Select a source and press Start");
+  const [message, setMessage] = useState("Select a source and press Connect");
   const [logs, setLogs] = useState<string[]>([]);
   const [lastReceivedAt, setLastReceivedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -48,7 +51,15 @@ export function useTelemetry({ dataSource }: UseTelemetryOptions) {
     }
     try {
       const result = await invoke<SerialPortInfo[]>("serial_ports");
-      if (mounted.current) setPorts(result);
+      if (mounted.current) {
+        setPorts(result);
+        if (session.current === null) {
+          const count = result.filter((port) => port.usb).length;
+          setMessage(count === 0
+            ? "No USB Serial device detected. Connect ESP32, then Refresh ports."
+            : `Found ${count} USB Serial device${count === 1 ? "" : "s"}. Select a port or Auto, then Connect.`);
+        }
+      }
     } catch (error) {
       if (mounted.current) setMessage(`Cannot list ports: ${String(error)}`);
     }
@@ -95,12 +106,11 @@ export function useTelemetry({ dataSource }: UseTelemetryOptions) {
       setMessage("Open the Tauri desktop app for USB Serial: pnpm tauri dev");
       return;
     }
-    const id = crypto.randomUUID();
+    const id = `serial-${Date.now()}-${++nextSessionId}`;
     session.current = id;
     setStatus("connecting");
     setMessage("Opening ESP32 Serial at 115200 baud…");
-    const channel = new Channel<SerialEvent>();
-    channel.onmessage = (event) => {
+    const receiveEvent = (event: SerialEvent) => {
       if (!mounted.current || session.current !== id) return;
       if (event.kind === "sample") {
         if (previous.current && event.elapsed_ms / 1000 < previous.current.time) {
@@ -127,8 +137,11 @@ export function useTelemetry({ dataSource }: UseTelemetryOptions) {
         appendLog(event.error ?? "Serial connection closed");
       }
     };
-    pendingConnect.current = (async () => {
+    // Defer until the ref is assigned, so even a synchronous IPC error clears it.
+    pendingConnect.current = Promise.resolve().then(async () => {
       try {
+        const channel = new Channel<SerialEvent>();
+        channel.onmessage = receiveEvent;
         const port = await invoke<string>("serial_connect", {
           port: dataSource === DEFAULT_DATA_SOURCE ? null : dataSource,
           sessionId: id,
@@ -151,7 +164,7 @@ export function useTelemetry({ dataSource }: UseTelemetryOptions) {
       } finally {
         pendingConnect.current = null;
       }
-    })();
+    });
   };
 
   const stopTelemetry = async () => {

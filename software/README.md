@@ -36,11 +36,11 @@ berjalan melalui browser.
 4. Pilih **Auto · USB** untuk memilih otomatis jika tepat satu perangkat USB
    Serial terdeteksi. Jika ada beberapa perangkat, pilih port ESP32 secara
    eksplisit: misalnya `/dev/ttyUSB0`, `/dev/ttyACM0`, atau `COM3`.
-5. Klik **Start**. Baud rate tetap **115200**, sesuai firmware.
+5. Klik **Connect** di sebelah pilihan port. Baud rate tetap **115200**, sesuai firmware.
 6. Status **Waiting for data** berarti port sudah terbuka. Status **Receiving**
    berarti sampel sensor berhasil dibaca. Sampel pertama membutuhkan satu frame
    lengkap; decoder menyelesaikan frame saat timestamp berikutnya tiba.
-7. Klik **Stop** untuk menutup port. Port juga dilepas ketika jendela aplikasi ditutup.
+7. Klik **Disconnect** untuk menutup port. Port juga dilepas ketika jendela aplikasi ditutup.
 
 Tidak perlu flash ulang untuk integrasi ini jika ESP32 sudah menampilkan format
 MPU6050/BMP280 dari firmware dalam repo. D21 tetap SDA dan D22 tetap SCL.
@@ -49,7 +49,7 @@ relay ESP-NOW melalui ESP32 GCS belum diimplementasikan.
 
 Jika port gagal dibuka, tutup monitor lain dan periksa izin perangkat Serial OS.
 Aplikasi menampilkan kesalahan pembukaan port atau putusnya perangkat. Tidak ada
-reconnect otomatis setelah kabel terputus; sambungkan lagi, Refresh ports, lalu Start.
+reconnect otomatis setelah kabel terputus; sambungkan lagi, Refresh ports, lalu Connect.
 
 ## Data yang ditampilkan
 
@@ -58,7 +58,7 @@ reconnect otomatis setelah kabel terputus; sambungkan lagi, Refresh ports, lalu 
 - Besar kecepatan sudut dalam °/s (konversi dari rad/s).
 - Detail sumbu X/Y/Z accelerometer dan gyro tetap ditampilkan dalam satuan asli.
 - Altitude adalah **estimasi barometrik relatif** terhadap tekanan pertama sesi,
-  bukan altitude GPS atau tinggi absolut. Start baru atau uptime ESP32 yang
+  bukan altitude GPS atau tinggi absolut. Koneksi baru atau uptime ESP32 yang
   kembali ke nol mereset referensi. Descent estimate dihitung dari perubahan
   altitude antar-sampel; positif berarti turun. Nilainya peka terhadap noise tekanan.
 - Roll/pitch adalah estimasi kemiringan berdasarkan gravitasi; gerakan dan getaran

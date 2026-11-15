@@ -1,6 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+.connection-panel { padding: 18px 20px; margin-bottom: 20px; border: 1px solid #e2e7ed; border-radius: 14px; background: #fff; }
+.connection-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.connection-controls label { font-size: 13px; font-weight: 600; }
+.connection-controls select { min-width: 190px; max-width: 400px; border: 1px solid #dce2e9; border-radius: 8px; background: white; padding: 10px 12px; font-size: 13px; }
+.connection-controls button { min-height: 40px; }
+.connect-button, .disconnect-button { padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+.connect-button { background: #198b59; color: #fff; }
+.disconnect-button { background: #fceeea; color: #ba4931; }
+.port-count { color: #717b87; font-size: 12px; }
+.connection-panel .source-summary { margin: 14px 0 0; }
+.command-card > .command-footer { position: static; margin-top: 20px; }
+
 /* Live Serial telemetry */
 .source-summary { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 18px; color: #717b87; font-size: 12px; }
 .source-summary > span:first-child { color: #17202d; font-family: "DM Mono", monospace; }

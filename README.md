@@ -93,7 +93,7 @@ Build Rust pertama kali bisa memakan waktu beberapa menit, itu normal.
 
 Untuk data sensor asli, tutup PlatformIO Serial Monitor, buka aplikasi melalui
 `pnpm tauri dev`, klik **Refresh ports**, pilih **Auto · USB** atau port ESP32,
-lalu klik **Start**. Auto memilih port hanya jika tepat satu perangkat USB Serial
+lalu klik **Connect** di sebelah pilihan port. Auto memilih port hanya jika tepat satu perangkat USB Serial
 terdeteksi. Panduan lengkap ada di [README software](software/README.md).
 
 Alur yang sudah diimplementasikan saat ini adalah **ESP32 avionics → USB Serial →
