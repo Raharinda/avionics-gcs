@@ -16,6 +16,9 @@ function App() {
   >([]);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
+  const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
+  const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
+  const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
   const sourceState = useRef(
     new Map<string, {
       connected: boolean;
@@ -160,6 +163,20 @@ function App() {
           ? "SENDING"
           : "FIRED";
   const [isLogExpanded, setIsLogExpanded] = useState(false);
+  const startCalibration = () => {
+    setIsCalibrationStarted(true);
+    setIsCalibrationComplete(false);
+    setLog("14:32:13.104  Sensor calibration started — hold vehicle steady");
+  };
+  const finishCalibration = () => {
+    setIsCalibrationComplete(true);
+    setLog("14:32:18.772  Sensor calibration complete — offsets saved");
+  };
+  const closeCalibration = () => {
+    setIsCalibrationOpen(false);
+    setIsCalibrationStarted(false);
+    setIsCalibrationComplete(false);
+  };
 
   return (
     <main className="app-shell">
@@ -214,6 +231,19 @@ function App() {
       </header>
 
       <div className="dashboard">
+        <div className="dashboard-toolbar">
+          <div>
+            <div className="section-label">SENSOR SETUP</div>
+            <h1>Flight instrumentation</h1>
+          </div>
+          <button
+            className="calibration-trigger"
+            type="button"
+            onClick={() => setIsCalibrationOpen(true)}
+          >
+            Calibrate sensors
+          </button>
+        </div>
         <section className="metric-row">
           <article className="card metric">
             <div className="card-heading">
@@ -489,6 +519,77 @@ function App() {
           </aside>
         </section>
       </div>
+      {isCalibrationOpen && (
+        <div
+          className="calibration-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeCalibration();
+          }}
+        >
+          <section
+            className="calibration-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calibration-title"
+          >
+            <div className="calibration-modal-header">
+              <div>
+                <div className="section-label">SENSOR CALIBRATION</div>
+                <h2 id="calibration-title">Align vehicle sensors</h2>
+              </div>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={closeCalibration}
+                aria-label="Close calibration"
+              >
+                ×
+              </button>
+            </div>
+            <div className="calibration-preview" aria-label="3D calibration model preview">
+              <div className="calibration-grid" />
+              <div className="calibration-model">
+                <div className="calibration-face face-front">IMU</div>
+                <div className="calibration-face face-back">IMU</div>
+                <div className="calibration-face face-right">X</div>
+                <div className="calibration-face face-left">−X</div>
+                <div className="calibration-face face-top">Z</div>
+                <div className="calibration-face face-bottom">−Z</div>
+              </div>
+              <span className="calibration-axis axis-x">X</span>
+              <span className="calibration-axis axis-y">Y</span>
+              <span className="calibration-axis axis-z">Z</span>
+            </div>
+            <div className="calibration-status">
+              <span className={`calibration-indicator ${isCalibrationComplete ? "complete" : isCalibrationStarted ? "active" : ""}`} />
+              {isCalibrationComplete
+                ? "Calibration complete. Offsets saved."
+                : isCalibrationStarted
+                  ? "Calibration running. Keep the vehicle steady."
+                  : "Ready to calibrate accelerometer, gyroscope, and magnetometer."}
+            </div>
+            <div className="calibration-actions">
+              <button
+                className="calibration-start"
+                type="button"
+                onClick={startCalibration}
+                disabled={isCalibrationStarted && !isCalibrationComplete}
+              >
+                Start calibration
+              </button>
+              <button
+                className="calibration-finish"
+                type="button"
+                onClick={finishCalibration}
+                disabled={!isCalibrationStarted || isCalibrationComplete}
+              >
+                Calibration complete
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
         <span className="log-status">
           <i /> Serial log
