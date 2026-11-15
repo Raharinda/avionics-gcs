@@ -224,7 +224,7 @@ feat(avionics): add espnow sender
 feat(desktop): add serial reader
 fix(gcs): handle malformed packet
 docs(readme): update installation guide
-chore(ci): add software workflow
+chore(deps): update dependencies
 ```
 
 ---
@@ -233,18 +233,15 @@ chore(ci): add software workflow
 
 ```text
 📦 project-root/
-├── 📂 .github/
-│   └── 📂 workflows/          # GitHub Actions (hardware-ci, software-ci, desktop-release)
 ├── 📂 hardware/
 │   ├── 📂 avionics/
 │   │   └── 📂 firmware/       # Firmware ESP32 di roket
 │   └── 📂 gcs/
 │       └── 📂 firmware/       # Firmware ESP32 di GCS
 ├── 📂 software/
-│   └── 📂 desktop/
-│       ├── 📂 src/            # Frontend React + TypeScript
-│       ├── 📂 src-tauri/      # Backend Rust (Tauri 2)
-│       └── 📄 package.json
+│   ├── 📂 src/                # Frontend React + TypeScript
+│   ├── 📂 src-tauri/          # Backend Rust (Tauri 2)
+│   └── 📄 package.json
 ├── 📄 README.md
 └── 📄 .gitignore
 ```
