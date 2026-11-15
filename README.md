@@ -50,6 +50,7 @@ Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust 
 | Serial reader (Rust)        | Belum dimulai  |
 | Dashboard real-time         | Belum dimulai  |
 | SQLite dan CSV export       | Belum dimulai  |
+| GitHub Actions (CI/CD)      | Rencana        |
 | Ground Control              | Rencana        |
 
 Hal yang masih ditentukan nanti: sensor tambahan selain MPU6050, sampling rate, frekuensi kirim telemetry, skema database, pinout, dan mekanisme otorisasi kontrol.
@@ -82,7 +83,7 @@ Lalu jalankan:
 
 ```bash
 git clone <repository-url>
-cd <nama-repo>/software
+cd <nama-repo>/software/desktop
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
@@ -176,6 +177,10 @@ flowchart LR
 | 6️⃣   | `git push -u origin feat/nama-fitur` | Push feature branch           |
 | 7️⃣   | 📝 Create PR                         | Buat Pull Request ke `main`   |
 | 🏁   | ✅ Done!                             | Selesai!                      |
+
+### Release
+
+Release desktop dipicu oleh Git tag dengan pola `v*` (contoh: `v0.1.0`). Workflow ini masih dalam tahap perencanaan.
 
 ---
 
