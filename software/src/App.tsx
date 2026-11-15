@@ -27,14 +27,6 @@ function App() {
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
   const connectionReady =
     dataSource === DUMMY_SOURCE || (sourceAvailable && connected);
-  const [isLogExpanded, setIsLogExpanded] = useState(false);
-
-  const startDummyData = () => {
-    loadDummyData();
-    setConnected(true);
-    setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
-  };
-
   const clearTelemetry = () => {
     setConnected(false);
     setCommandState("safe");
@@ -45,7 +37,7 @@ function App() {
 
   const stopTelemetry = () => {
     clearTelemetry();
-    setDataSource("COM4 · USB");
+    setDataSource(DEFAULT_DATA_SOURCE);
   };
 
   const selectDataSource = (source: string) => {
@@ -60,7 +52,9 @@ function App() {
 
   const startTelemetry = () => {
     if (dataSource === DUMMY_SOURCE) {
-      startDummyData();
+      loadDummyData();
+      setConnected(true);
+      setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
       return;
     }
     setConnected(true);
@@ -90,7 +84,9 @@ function App() {
       setCommandState("complete");
       setPhase("Flight");
       setConnected(true);
-      setLog("14:32:11.236  ACK FIRE — ejection charge triggered; listening for telemetry");
+      setLog(
+        "14:32:11.236  ACK FIRE — ejection charge triggered; listening for telemetry",
+      );
     }, 1200);
   };
 
@@ -102,6 +98,7 @@ function App() {
         : commandState === "firing"
           ? "SENDING"
           : "FIRED";
+  const [isLogExpanded, setIsLogExpanded] = useState(false);
 
   return (
     <main className="app-shell">
@@ -327,12 +324,11 @@ function App() {
               <span className="step-number">01</span>
               <div>
                 <b>Arm system</b>
-                <small>{connectionReady ? "Enable fire controls" : "Connect port first"}</small>
+                <small>Enable fire controls</small>
               </div>
               <button
                 className={`toggle ${commandState !== "safe" ? "on" : ""}`}
                 onClick={armSystem}
-                disabled={!connectionReady || commandState !== "safe"}
                 aria-label="Arm system"
               >
                 <span />
@@ -342,11 +338,11 @@ function App() {
               <span className="step-number">02</span>
               <div>
                 <b>Fire charge</b>
-                <small>{connectionReady ? "Arm system first" : "Connect port first"}</small>
+                <small>Arm system first</small>
               </div>
               <button
                 className={`fire-button ${commandState}`}
-                disabled={!connectionReady || commandState !== "armed"}
+                disabled={commandState !== "armed"}
                 onClick={fireCharge}
               >
                 FIRE
@@ -403,8 +399,18 @@ function App() {
               >
                 Reset
               </button>
-              <button className="start" onClick={startTelemetry} disabled={connected}>Start</button>
-              <button className="stop" onClick={stopTelemetry} disabled={!connected}>
+              <button
+                className="start"
+                onClick={startTelemetry}
+                disabled={connected}
+              >
+                Start
+              </button>
+              <button
+                className="stop"
+                onClick={stopTelemetry}
+                disabled={!connected}
+              >
                 Stop
               </button>
             </div>
@@ -417,11 +423,14 @@ function App() {
         </span>
         <code>{log}</code>
         {isLogExpanded && (
-          <pre>{log}{"\n"}Telemetry source: {dataSource}{"\n"}Stream: {connected ? "active" : "stopped"}</pre>
+          <pre>
+            {log}
+            {"\n"}Telemetry source: {dataSource}
+            {"\n"}Stream: {connected ? "active" : "stopped"}
+          </pre>
         )}
         <button onClick={() => setIsLogExpanded(!isLogExpanded)}>
-          <Icon name="send" />{" "}
-          {isLogExpanded ? "Collapse log" : "Expand log"}
+          <Icon name="send" /> {isLogExpanded ? "Collapse log" : "Expand log"}
         </button>
       </footer>
     </main>
