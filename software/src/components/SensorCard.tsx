@@ -10,7 +10,7 @@ import {
 import type { TelemetryPoint } from "../types/telemetry";
 import { Card } from "./Card";
 
-type SensorKey = "temperature" | "pressure" | "acceleration";
+type SensorKey = "temperature" | "pressure" | "acceleration" | "gyroscope";
 
 type SensorCardProps = {
   title: string;

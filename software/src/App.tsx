@@ -54,6 +54,7 @@ function App() {
 
   const altitude =
     series.length > 0 ? series[series.length - 1].altitude : null;
+  const latestTelemetry = series.length > 0 ? series[series.length - 1] : null;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
   const sourceAvailable =
@@ -113,7 +114,7 @@ function App() {
       const message = await startSerialListener(portName);
       setPortConnected(true);
       setConnected(true);
-      setLog(`${message} — waiting for telemetry data`);
+      setLog(`${message} — waiting for JSON telemetry`);
     } catch (error) {
       setPortConnected(false);
       setConnected(false);
@@ -236,7 +237,7 @@ function App() {
               <span>Descent rate</span>
               <b className="live-tag">{hasTelemetry ? "LIVE" : "NO DATA"}</b>
             </div>
-            <strong>{hasTelemetry ? "−18.4" : "—"}</strong>
+            <strong>—</strong>
             <small>m/s</small>
             <div className="metric-bar blue">
               <span style={{ width: hasTelemetry ? "43%" : "0%" }} />
@@ -286,15 +287,15 @@ function App() {
               <div className="attitude-values">
                 <div>
                   <span>ROLL</span>
-                  <b>{hasTelemetry ? "−1.4°" : "—"}</b>
+                  <b>—</b>
                 </div>
                 <div>
                   <span>PITCH</span>
-                  <b>{hasTelemetry ? "2.8°" : "—"}</b>
+                  <b>—</b>
                 </div>
                 <div>
                   <span>YAW</span>
-                  <b>{hasTelemetry ? "184.2°" : "—"}</b>
+                  <b>—</b>
                 </div>
               </div>
             </article>
@@ -322,7 +323,7 @@ function App() {
           <div className="sensor-grid">
             <SensorCard
               title="Temperature"
-              value={hasTelemetry ? "24.8" : "—"}
+              value={latestTelemetry ? latestTelemetry.temperature.toFixed(2) : "—"}
               unit="°C"
               color="#ff5733"
               data={chartData}
@@ -332,27 +333,27 @@ function App() {
             />
             <SensorCard
               title="Pressure"
-              value={hasTelemetry ? "100.6" : "—"}
-              unit="kPa"
+              value={latestTelemetry ? latestTelemetry.pressure.toFixed(2) : "—"}
+              unit="hPa"
               color="#252932"
               data={chartData}
               dataKey="pressure"
-              domain={[98, 103]}
+              domain={[980, 1030]}
               hasData={hasTelemetry}
             />
             <SensorCard
               title="Gyroscope"
-              value={hasTelemetry ? "−1.4" : "—"}
+              value={latestTelemetry ? latestTelemetry.gyroscope.toFixed(2) : "—"}
               unit="°/s"
               color="#92959a"
               data={chartData}
-              dataKey="acceleration"
-              domain={[0.8, 1.2]}
+              dataKey="gyroscope"
+              domain={[0, 360]}
               hasData={hasTelemetry}
             />
             <SensorCard
               title="Accelerometer"
-              value={hasTelemetry ? "0.98" : "—"}
+              value={latestTelemetry ? latestTelemetry.acceleration.toFixed(3) : "—"}
               unit="g"
               color="#252932"
               data={chartData}
@@ -362,7 +363,7 @@ function App() {
             />
             <SensorCard
               title="Magnetometer"
-              value={hasTelemetry ? "42.1" : "—"}
+              value="—"
               unit="µT"
               color="#a6a8aa"
               data={chartData}
@@ -372,7 +373,7 @@ function App() {
             />
             <SensorCard
               title="Orientation"
-              value={hasTelemetry ? "184.2" : "—"}
+              value="—"
               unit="°"
               color="#252932"
               data={chartData}
