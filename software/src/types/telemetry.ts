@@ -6,5 +6,6 @@ export type TelemetryPoint = {
   temperature: number;
   pressure: number;
   acceleration: number;
+  gyroscope: number;
   altitude: number;
 };

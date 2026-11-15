@@ -16,12 +16,52 @@ struct SerialPortInfo {
     description: Option<String>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize)]
+struct RawTelemetryMessage {
+    temperature: f64,
+    pressure: f64,
+    #[serde(rename = "accelX")]
+    accel_x: f64,
+    #[serde(rename = "accelY")]
+    accel_y: f64,
+    #[serde(rename = "accelZ")]
+    accel_z: f64,
+    #[serde(rename = "gyroX")]
+    gyro_x: f64,
+    #[serde(rename = "gyroY")]
+    gyro_y: f64,
+    #[serde(rename = "gyroZ")]
+    gyro_z: f64,
+}
+
+#[derive(Clone, Serialize)]
 struct TelemetryMessage {
     temperature: f64,
     pressure: f64,
     acceleration: f64,
+    gyroscope: f64,
     altitude: f64,
+}
+
+impl From<RawTelemetryMessage> for TelemetryMessage {
+    fn from(raw: RawTelemetryMessage) -> Self {
+        let acceleration = (raw.accel_x.powi(2) + raw.accel_y.powi(2) + raw.accel_z.powi(2))
+            .sqrt()
+            / 9.80665;
+        let gyroscope =
+            (raw.gyro_x.powi(2) + raw.gyro_y.powi(2) + raw.gyro_z.powi(2)).sqrt()
+                * 57.295779513;
+        let altitude =
+            44330.0 * (1.0 - (raw.pressure / 1013.25).powf(0.19029495));
+
+        Self {
+            temperature: raw.temperature,
+            pressure: raw.pressure,
+            acceleration,
+            gyroscope,
+            altitude,
+        }
+    }
 }
 
 #[tauri::command]
@@ -32,10 +72,25 @@ fn start_serial_listener(
 ) -> Result<String, String> {
     stop_current_listener(&state)?;
 
-    let port = serialport::new(&port_name, 115_200)
-        .timeout(Duration::from_millis(250))
-        .open()
-        .map_err(|error| format!("Failed to open {port_name}: {error}"))?;
+    let mut last_error = None;
+    let port = (0..3).find_map(|_| {
+        match serialport::new(&port_name, 115_200)
+            .timeout(Duration::from_millis(250))
+            .open()
+        {
+            Ok(port) => Some(port),
+            Err(error) => {
+                last_error = Some(error.to_string());
+                thread::sleep(Duration::from_millis(300));
+                None
+            }
+        }
+    }).ok_or_else(|| {
+        format!(
+            "Failed to open {port_name}: {}. Close Arduino/PlatformIO Serial Monitor and retry.",
+            last_error.unwrap_or_else(|| "unknown serial error".to_string())
+        )
+    })?;
 
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
@@ -101,8 +156,15 @@ fn read_serial_lines(
         match reader.read_line(&mut line) {
             Ok(0) => continue,
             Ok(_) => {
-                if let Ok(message) = serde_json::from_str::<TelemetryMessage>(line.trim()) {
+                let raw = line.trim();
+                let json = raw
+                    .find('{')
+                    .and_then(|start| raw[start..].rfind('}').map(|end| &raw[start..=start + end]));
+                if let Some(json) = json {
+                    if let Ok(raw) = serde_json::from_str::<RawTelemetryMessage>(json) {
+                        let message = TelemetryMessage::from(raw);
                     let _ = app.emit("telemetry", message);
+                    }
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::TimedOut => continue,

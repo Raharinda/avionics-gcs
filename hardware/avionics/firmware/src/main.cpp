@@ -18,6 +18,14 @@ bool mpuReady = false;
 bool bmpReady = false;
 uint8_t mpuAddress = 0;
 uint8_t bmpAddress = 0;
+float telemetryTemperature = 0.0F;
+float telemetryPressure = 0.0F;
+float telemetryAccelX = 0.0F;
+float telemetryAccelY = 0.0F;
+float telemetryAccelZ = 0.0F;
+float telemetryGyroX = 0.0F;
+float telemetryGyroY = 0.0F;
+float telemetryGyroZ = 0.0F;
 uint32_t lastReadMs = 0;
 uint32_t lastRetryMs = 0;
 
@@ -99,6 +107,13 @@ void printMpu() {
                   accel.acceleration.x, accel.acceleration.y, accel.acceleration.z);
     Serial.printf("        | Gyro [rad/s]  X=%.3f Y=%.3f Z=%.3f | Suhu=%.2f C\n",
                   gyro.gyro.x, gyro.gyro.y, gyro.gyro.z, temperature.temperature);
+    telemetryAccelX = accel.acceleration.x;
+    telemetryAccelY = accel.acceleration.y;
+    telemetryAccelZ = accel.acceleration.z;
+    telemetryGyroX = gyro.gyro.x;
+    telemetryGyroY = gyro.gyro.y;
+    telemetryGyroZ = gyro.gyro.z;
+    telemetryTemperature = temperature.temperature;
 }
 
 void printBmp() {
@@ -117,6 +132,23 @@ void printBmp() {
     }
     Serial.printf("BMP280  | Suhu=%.2f C | Tekanan=%.2f hPa\n",
                   temperatureC, pressureHpa);
+    telemetryPressure = pressureHpa;
+}
+
+void printTelemetryJson() {
+    if (!mpuReady || !bmpReady || telemetryPressure <= 0.0F) return;
+
+    Serial.printf(
+        "{\"temperature\":%.2f,\"pressure\":%.2f,\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,\"gyroX\":%.3f,\"gyroY\":%.3f,\"gyroZ\":%.3f}\n",
+        telemetryTemperature,
+        telemetryPressure,
+        telemetryAccelX,
+        telemetryAccelY,
+        telemetryAccelZ,
+        telemetryGyroX,
+        telemetryGyroY,
+        telemetryGyroZ
+    );
 }
 }  // namespace
 
@@ -145,6 +177,7 @@ void loop() {
         Serial.printf("\n--- Waktu: %lu ms ---\n", static_cast<unsigned long>(now));
         printMpu();
         printBmp();
+        printTelemetryJson();
     }
 
     // Sensor yang ada tetap dibaca saat sensor lain belum terpasang.
