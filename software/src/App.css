@@ -1,6 +1,24 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+/* Live Serial telemetry */
+.source-summary { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 18px; color: #717b87; font-size: 12px; }
+.source-summary > span:first-child { color: #17202d; font-family: "DM Mono", monospace; }
+.header-actions select { max-width: 235px; }
+.refresh-ports { background: #edf0f3; color: #525c69; padding: 9px 12px; border-radius: 8px; font-size: 11px; white-space: nowrap; }
+button:disabled, select:disabled { cursor: not-allowed; opacity: .55; }
+.sensor-detail { min-height: 15px; margin-top: 6px; color: #717b87; font: 9px "DM Mono", monospace; overflow-wrap: anywhere; }
+.live-tag.stale { color: #ad6c20; }
+.live-tag.simulated { color: #8162bd; }
+.connection-pill i.simulated { background: #986cf4; }
+.log-status i.idle { background: #adb4bc; box-shadow: none; }
+.command-note { font-size: 11px; color: #717b87; line-height: 1.6; }
+.rocket { transition: transform .3s ease; }
+.serial-log.expanded { height: 280px; }
+.serial-log.expanded pre { top: 58px; bottom: 14px; overflow-y: auto; }
+.serial-log code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
+@media (max-width: 1350px) { .utc { display: none; } }
+
 :root { font-family: "DM Sans", sans-serif; color: #17202d; background: #f5f6f8; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1060px; }

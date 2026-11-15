@@ -4,8 +4,9 @@ Firmware untuk ESP32 DevKit klasik / ESP-WROOM-32, menggunakan Arduino framework
 dan PlatformIO. Target bawaan `esp32dev`, flash 4 MB. Untuk ESP32-C3/S3, konfigurasi
 board harus disesuaikan sebelum build dan flash.
 
-Firmware ini membaca sensor dan menampilkan hasil lewat USB Serial. Pengiriman
-ESP-NOW dan integrasi dengan aplikasi desktop belum diimplementasikan.
+Firmware ini membaca sensor dan menampilkan hasil lewat USB Serial. Aplikasi
+desktop dapat membaca format ini langsung melalui backend Rust; lihat
+[panduan software](../../../software/README.md). Pengiriman ESP-NOW belum diimplementasikan.
 
 ## Isi firmware
 
