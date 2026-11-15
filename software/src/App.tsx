@@ -25,6 +25,8 @@ function App() {
   const hasTelemetry = series.length > 0;
   const sourceAvailable =
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
+  const connectionReady =
+    dataSource === DUMMY_SOURCE || (sourceAvailable && connected);
   const [isLogExpanded, setIsLogExpanded] = useState(false);
 
   const startDummyData = () => {
@@ -66,8 +68,8 @@ function App() {
   };
 
   const armSystem = () => {
-    if (!sourceAvailable) {
-      setLog("14:32:10.422  ARM_SYSTEM rejected — select a data source first");
+    if (!connectionReady) {
+      setLog("14:32:10.422  ARM_SYSTEM rejected — connect port first");
       return;
     }
     if (commandState === "safe") {
@@ -77,8 +79,8 @@ function App() {
   };
 
   const fireCharge = () => {
-    if (!sourceAvailable || commandState !== "armed") {
-      setLog("14:32:11.008  FIRE rejected — select a data source first");
+    if (!connectionReady || commandState !== "armed") {
+      setLog("14:32:11.008  FIRE rejected — connect port first");
       return;
     }
     setConnected(true);
@@ -325,11 +327,12 @@ function App() {
               <span className="step-number">01</span>
               <div>
                 <b>Arm system</b>
-                <small>Enable fire controls</small>
+                <small>{connectionReady ? "Enable fire controls" : "Connect port first"}</small>
               </div>
               <button
                 className={`toggle ${commandState !== "safe" ? "on" : ""}`}
                 onClick={armSystem}
+                disabled={!connectionReady || commandState !== "safe"}
                 aria-label="Arm system"
               >
                 <span />
@@ -339,11 +342,11 @@ function App() {
               <span className="step-number">02</span>
               <div>
                 <b>Fire charge</b>
-                <small>Arm system first</small>
+                <small>{connectionReady ? "Arm system first" : "Connect port first"}</small>
               </div>
               <button
                 className={`fire-button ${commandState}`}
-                disabled={commandState !== "armed"}
+                disabled={!connectionReady || commandState !== "armed"}
                 onClick={fireCharge}
               >
                 FIRE
@@ -413,6 +416,9 @@ function App() {
           <i /> Serial log
         </span>
         <code>{log}</code>
+        {isLogExpanded && (
+          <pre>{log}{"\n"}Telemetry source: {dataSource}{"\n"}Stream: {connected ? "active" : "stopped"}</pre>
+        )}
         <button onClick={() => setIsLogExpanded(!isLogExpanded)}>
           <Icon name="send" />{" "}
           {isLogExpanded ? "Collapse log" : "Expand log"}
