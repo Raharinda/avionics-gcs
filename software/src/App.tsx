@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./components/Icon";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
@@ -13,6 +13,16 @@ function App() {
   const [dataSource, setDataSource] = useState(DEFAULT_DATA_SOURCE);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
+  const sourceState = useRef(
+    new Map<string, {
+      connected: boolean;
+      portConnected: boolean;
+      commandState: CommandState;
+      phase: Phase;
+      log: string;
+    }>(),
+  );
+  const activeSource = useRef(dataSource);
   const {
     series,
     packetCount,
@@ -28,6 +38,27 @@ function App() {
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
   const connectionReady =
     dataSource === DUMMY_SOURCE || (sourceAvailable && portConnected);
+
+  useEffect(() => {
+    if (activeSource.current !== dataSource) {
+      activeSource.current = dataSource;
+      const saved = sourceState.current.get(dataSource);
+      if (!saved) return;
+      setConnected(saved.connected);
+      setPortConnected(saved.portConnected);
+      setCommandState(saved.commandState);
+      setPhase(saved.phase);
+      setLog(saved.log);
+      return;
+    }
+    sourceState.current.set(dataSource, {
+      connected,
+      portConnected,
+      commandState,
+      phase,
+      log,
+    });
+  }, [commandState, connected, dataSource, log, phase, portConnected]);
   const clearTelemetry = () => {
     setConnected(false);
     clearTelemetryData();
@@ -40,13 +71,6 @@ function App() {
 
   const selectDataSource = (source: string) => {
     setDataSource(source);
-    setPortConnected(false);
-    clearTelemetry();
-    setLog(
-      source === DUMMY_SOURCE
-        ? "Dummy data selected — press Start to stream"
-        : "No telemetry data received",
-    );
   };
 
   const startTelemetry = () => {
