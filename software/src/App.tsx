@@ -184,7 +184,12 @@ function App() {
     setIsCalibrationStarted(false);
     setIsCalibrationComplete(false);
   };
-  const utcTime = utcNow.toISOString().slice(11, 19);
+  const laptopTime = utcNow.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
   return (
     <main className={`app-shell ${isDarkMode ? "dark-mode" : ""}`}>
@@ -212,8 +217,8 @@ function App() {
         </nav>
         <div className="header-actions">
           <div className="utc">
-            <b>{utcTime} UTC</b>
-            <span>LAPTOP UTC</span>
+            <b>{laptopTime}</b>
+            <span>LAPTOP TIME</span>
           </div>
           <select
             aria-label="Data source"
@@ -520,7 +525,12 @@ function App() {
                     const synchronizedAt = new Date();
                     setUtcNow(synchronizedAt);
                     setLog(
-                      `${synchronizedAt.toISOString().slice(11, 23)}  UTC synchronized from laptop`,
+                      `${synchronizedAt.toLocaleTimeString("en-GB", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                      })}.${String(synchronizedAt.getMilliseconds()).padStart(3, "0")}  Laptop clock synchronized`,
                     );
                   }}
                 >
