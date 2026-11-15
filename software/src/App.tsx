@@ -19,37 +19,14 @@ function App() {
     clearTelemetry: clearTelemetryData,
   } = useTelemetry({ connected, dataSource });
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!connected || dataSource !== "Dummy data") return;
-      setPacketCount((count) => count + 1);
-      setSeries((current) => {
-        const lastTime = current.length > 0 ? current[current.length - 1].time : 0;
-        return [...current.slice(-17), {
-          time: lastTime + 1,
-          temperature: 24.5 + Math.sin(Date.now() / 1200) * 1.2,
-          pressure: 100.4 + Math.sin(Date.now() / 1700) * 0.6,
-          acceleration: 0.98 + Math.sin(Date.now() / 900) * 0.06,
-          altitude: 1248 + Math.sin(Date.now() / 3000) * 8,
-        }];
-      });
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [connected]);
-
-  const altitude = series.length > 0 ? series[series.length - 1].altitude : null;
+  const altitude =
+    series.length > 0 ? series[series.length - 1].altitude : null;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
   const sourceAvailable =
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
-  const [isLogExpanded, setIsLogExpanded] = useState(false);
-
-  const startDummyData = () => {
-    loadDummyData();
-    setConnected(true);
-    setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
-  };
-
+  const connectionReady =
+    dataSource === DUMMY_SOURCE || (sourceAvailable && connected);
   const clearTelemetry = () => {
     setConnected(false);
     setCommandState("safe");
@@ -60,18 +37,24 @@ function App() {
 
   const stopTelemetry = () => {
     clearTelemetry();
-    setDataSource("COM4 · USB");
+    setDataSource(DEFAULT_DATA_SOURCE);
   };
 
   const selectDataSource = (source: string) => {
     setDataSource(source);
     clearTelemetry();
-    setLog(source === "Dummy data" ? "Dummy data selected — press Start to stream" : "No telemetry data received");
+    setLog(
+      source === DUMMY_SOURCE
+        ? "Dummy data selected — press Start to stream"
+        : "No telemetry data received",
+    );
   };
 
   const startTelemetry = () => {
-    if (dataSource === "Dummy data") {
+    if (dataSource === DUMMY_SOURCE) {
       loadDummyData();
+      setConnected(true);
+      setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
       return;
     }
     setConnected(true);
@@ -79,8 +62,8 @@ function App() {
   };
 
   const armSystem = () => {
-    if (!sourceAvailable) {
-      setLog("14:32:10.422  ARM_SYSTEM rejected — select a data source first");
+    if (!connectionReady) {
+      setLog("14:32:10.422  ARM_SYSTEM rejected — connect port first");
       return;
     }
     if (commandState === "safe") {
@@ -90,8 +73,8 @@ function App() {
   };
 
   const fireCharge = () => {
-    if (!sourceAvailable || commandState !== "armed") {
-      setLog("14:32:11.008  FIRE rejected — select a data source first");
+    if (!connectionReady || commandState !== "armed") {
+      setLog("14:32:11.008  FIRE rejected — connect port first");
       return;
     }
     setConnected(true);
@@ -101,11 +84,20 @@ function App() {
       setCommandState("complete");
       setPhase("Flight");
       setConnected(true);
-      setLog("14:32:11.236  ACK FIRE — ejection charge triggered; listening for telemetry");
+      setLog(
+        "14:32:11.236  ACK FIRE — ejection charge triggered; listening for telemetry",
+      );
     }, 1200);
   };
 
-  const commandLabel = commandState === "safe" ? "SAFE" : commandState === "armed" ? "ARMED" : commandState === "firing" ? "SENDING" : "FIRED";
+  const commandLabel =
+    commandState === "safe"
+      ? "SAFE"
+      : commandState === "armed"
+        ? "ARMED"
+        : commandState === "firing"
+          ? "SENDING"
+          : "FIRED";
   const [isLogExpanded, setIsLogExpanded] = useState(false);
 
   return (
@@ -321,16 +313,126 @@ function App() {
           </div>
 
           <aside className="card command-card">
-            <div className="section-label">COMMAND</div><div className="card-title-row"><h2>Ejection</h2><span className={`status-badge ${commandState}`}>{commandLabel}</span></div>
-            <div className="command-step"><span className="step-number">01</span><div><b>Arm system</b><small>Enable fire controls</small></div><button className={`toggle ${commandState !== "safe" ? "on" : ""}`} onClick={armSystem} aria-label="Arm system"><span /></button></div>
-            <div className="command-step fire-step"><span className="step-number">02</span><div><b>Fire charge</b><small>Arm system first</small></div><button className={`fire-button ${commandState}`} disabled={commandState !== "armed"} onClick={fireCharge}>FIRE</button></div>
-            <div className="command-timeline"><div className={commandState !== "safe" ? "done" : ""}><i />Sending FIRE</div><div className={commandState === "firing" || commandState === "complete" ? "done" : ""}><i />Sent via serial</div><div className={commandState === "complete" ? "done" : ""}><i />Ack from rocket</div></div>
-            <div className="health-row"><span><i />1</span><span><i />2</span><span><i />3</span><span><i />4</span><b>No error</b><Icon name="chevron" /></div>
-            <div className="command-footer"><button onClick={() => setLog("14:32:12.004  UTC clock synchronized")}>Set UTC</button><button onClick={() => { setCommandState("safe"); setPhase("Initialization"); setLog("14:32:12.004  Command sequence reset"); }}>Reset</button><button className="start" onClick={startTelemetry} disabled={connected}>Start</button><button className="stop" onClick={stopTelemetry} disabled={!connected}>Stop</button></div>
+            <div className="section-label">COMMAND</div>
+            <div className="card-title-row">
+              <h2>Ejection</h2>
+              <span className={`status-badge ${commandState}`}>
+                {commandLabel}
+              </span>
+            </div>
+            <div className="command-step">
+              <span className="step-number">01</span>
+              <div>
+                <b>Arm system</b>
+                <small>Enable fire controls</small>
+              </div>
+              <button
+                className={`toggle ${commandState !== "safe" ? "on" : ""}`}
+                onClick={armSystem}
+                aria-label="Arm system"
+              >
+                <span />
+              </button>
+            </div>
+            <div className="command-step fire-step">
+              <span className="step-number">02</span>
+              <div>
+                <b>Fire charge</b>
+                <small>Arm system first</small>
+              </div>
+              <button
+                className={`fire-button ${commandState}`}
+                disabled={commandState !== "armed"}
+                onClick={fireCharge}
+              >
+                FIRE
+              </button>
+            </div>
+            <div className="command-timeline">
+              <div className={commandState !== "safe" ? "done" : ""}>
+                <i />
+                Sending FIRE
+              </div>
+              <div
+                className={
+                  commandState === "firing" || commandState === "complete"
+                    ? "done"
+                    : ""
+                }
+              >
+                <i />
+                Sent via serial
+              </div>
+              <div className={commandState === "complete" ? "done" : ""}>
+                <i />
+                Ack from rocket
+              </div>
+            </div>
+            <div className="health-row">
+              <span>
+                <i />1
+              </span>
+              <span>
+                <i />2
+              </span>
+              <span>
+                <i />3
+              </span>
+              <span>
+                <i />4
+              </span>
+              <b>No error</b>
+              <Icon name="chevron" />
+            </div>
+            <div className="command-footer">
+              <button
+                onClick={() => setLog("14:32:12.004  UTC clock synchronized")}
+              >
+                Set UTC
+              </button>
+              <button
+                onClick={() => {
+                  setCommandState("safe");
+                  setPhase("Initialization");
+                  setLog("14:32:12.004  Command sequence reset");
+                }}
+              >
+                Reset
+              </button>
+              <button
+                className="start"
+                onClick={startTelemetry}
+                disabled={connected}
+              >
+                Start
+              </button>
+              <button
+                className="stop"
+                onClick={stopTelemetry}
+                disabled={!connected}
+              >
+                Stop
+              </button>
+            </div>
           </aside>
         </section>
       </div>
-      <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}><span className="log-status"><i /> Serial log</span><code>{log}</code>{isLogExpanded && <pre>{log}{"\n"}Telemetry source: {dataSource}{"\n"}Stream: {connected ? "active" : "stopped"}</pre>}<button onClick={() => setIsLogExpanded(!isLogExpanded)}><Icon name="send" /> {isLogExpanded ? "Collapse log" : "Expand log"}</button></footer>
+      <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
+        <span className="log-status">
+          <i /> Serial log
+        </span>
+        <code>{log}</code>
+        {isLogExpanded && (
+          <pre>
+            {log}
+            {"\n"}Telemetry source: {dataSource}
+            {"\n"}Stream: {connected ? "active" : "stopped"}
+          </pre>
+        )}
+        <button onClick={() => setIsLogExpanded(!isLogExpanded)}>
+          <Icon name="send" /> {isLogExpanded ? "Collapse log" : "Expand log"}
+        </button>
+      </footer>
     </main>
   );
 }

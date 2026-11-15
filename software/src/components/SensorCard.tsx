@@ -8,6 +8,7 @@ import {
   YAxis,
 } from "recharts";
 import type { TelemetryPoint } from "../types/telemetry";
+import { Card } from "./Card";
 
 type SensorKey = "temperature" | "pressure" | "acceleration";
 
@@ -33,7 +34,7 @@ export function SensorCard({
   hasData,
 }: SensorCardProps) {
   return (
-    <article className="card sensor-card">
+    <Card className="sensor-card">
       <div className="card-heading"><span>{title}</span><b className="live-tag">{hasData ? "LIVE" : "NO DATA"}</b></div>
       <div className="sensor-value">{value}<small>{unit}</small></div>
       <div className="chart">
@@ -48,6 +49,6 @@ export function SensorCard({
         </ResponsiveContainer>
       </div>
       <div className="chart-axis"><span>T−12s</span><span>T−0s</span></div>
-    </article>
+    </Card>
   );
 }
