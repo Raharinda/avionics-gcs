@@ -184,6 +184,34 @@ function App() {
     setIsCalibrationStarted(false);
     setIsCalibrationComplete(false);
   };
+  const downloadTelemetryCsv = () => {
+    const header = "time,temperature,pressure,acceleration,gyroscope,altitude";
+    const rows = series.map((point) =>
+      [
+        point.time,
+        point.temperature,
+        point.pressure,
+        point.acceleration,
+        point.gyroscope,
+        point.altitude,
+      ].join(","),
+    );
+    const csv = [header, ...rows].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `telemetry-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setLog(
+      rows.length > 0
+        ? `CSV exported — ${rows.length} telemetry points`
+        : "CSV exported — no telemetry data available",
+    );
+  };
   const laptopTime = utcNow.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -239,7 +267,7 @@ function App() {
           <button className="download" type="button" onClick={() => void refreshSerialPorts()}>
             Refresh ports
           </button>
-          <button className="download">
+          <button className="download" type="button" onClick={downloadTelemetryCsv}>
             <Icon name="download" /> Download CSV
           </button>
         </div>
