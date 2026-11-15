@@ -65,7 +65,8 @@ button { cursor: pointer; border: 0; }
 @media (max-width: 600px) { .dashboard-toolbar { align-items: flex-start; flex-direction: column; }.dashboard-toolbar h1 { font-size: 20px; }.calibration-trigger { width: 100%; }.calibration-modal { padding: 20px; }.calibration-actions { grid-template-columns: 1fr; } }
 .dark-mode { color: #e9edf2; background: #14181d; }
 .dark-mode .topbar { background: rgba(25, 30, 36, .96); border-color: #2d353e; }
-.dark-mode .brand strong, .dark-mode .utc b, .dark-mode .card-title-row h2, .dark-mode .metric strong, .dark-mode .command-step b { color: #f2f5f7; }
+.dark-mode .brand strong, .dark-mode .utc b, .dark-mode .card-title-row h2, .dark-mode .command-step b { color: #f2f5f7; }
+.dark-mode .metric strong { color: #f2f5f7; }
 .dark-mode .connection-pill, .dark-mode .header-actions select, .dark-mode .theme-toggle { border-color: #39434e; color: #d7dde3; background: #20262d; }
 .dark-mode .phase-dot { background: #20262d; border-color: #65717d; }
 .dark-mode .phase-item.active .phase-dot { background: #fa5634; border-color: #fa5634; }
@@ -73,6 +74,7 @@ button { cursor: pointer; border: 0; }
 .dark-mode .phase-item.active { color: #f2f5f7; }
 .dark-mode .app-shell, .dark-mode .dashboard { background: #14181d; }
 .dark-mode .card { border-color: #2d353e; background: #1d232a; box-shadow: 0 5px 16px rgba(0, 0, 0, .2); }
+.dark-mode .metric-bar { background: #59636e; }
 .dark-mode .card-heading, .dark-mode .metric > small, .dark-mode .command-step small, .dark-mode .coordinates, .dark-mode .axis, .dark-mode .section-label, .dark-mode .chart-axis, .dark-mode .attitude-values span { color: #9da8b4; }
 .dark-mode .attitude-values, .dark-mode .attitude-values div, .dark-mode .command-step, .dark-mode .health-row, .dark-mode .command-footer-secondary { border-color: #303943; }
 .dark-mode .map { background-color: #303a35; background-image: linear-gradient(23deg, transparent 47%, #536057 48%, transparent 50%), linear-gradient(157deg, transparent 42%, #536057 43%, transparent 45%); }
@@ -83,9 +85,12 @@ button { cursor: pointer; border: 0; }
 .dark-mode .command-timeline .done { color: #d0d7de; }
 .dark-mode .command-timeline i { border-color: #66737f; background: #1d232a; }
 .dark-mode .fire-button { border-color: #46515c; color: #aeb8c2; background: #1d232a; }
+.dark-mode .toggle { background: #59636e; }
+.dark-mode .toggle span { background: #c4cbd2; }
+.dark-mode .toggle.on { background: #27bd75; }
 .dark-mode .serial-log { border-color: #2d353e; background: #1d232a; }
 .dark-mode .serial-log code, .dark-mode .serial-log pre { color: #aeb8c2; }
-.dark-mode .serial-log button, .dark-mode .download { color: #c6ced6; }
+.dark-mode .serial-log button, .dark-mode .download, .dark-mode .log-status { color: #c6ced6; }
 .dark-mode .calibration-trigger { border-color: #ef6548; color: #ff9a84; background: #2b2524; }
 .dark-mode .calibration-trigger:hover { background: #3a2a28; }
 .dark-mode .calibration-overlay { background: rgba(0, 0, 0, .58); }
