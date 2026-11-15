@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -9,6 +9,7 @@ use tauri::{Emitter, State};
 
 struct SerialState {
     stop: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    command_port: Mutex<Option<Arc<Mutex<Box<dyn SerialPort>>>>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -89,6 +90,10 @@ fn start_serial_listener(
             last_error.unwrap_or_else(|| "unknown serial error".to_string())
         )
     })?;
+    let command_port =
+        Arc::new(Mutex::new(port.try_clone().map_err(|error| {
+            format!("Failed to prepare serial commands: {error}")
+        })?));
 
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
@@ -98,6 +103,13 @@ fn start_serial_listener(
             .lock()
             .map_err(|_| "Serial state unavailable".to_string())?;
         *current = Some(stop);
+    }
+    {
+        let mut current = state
+            .command_port
+            .lock()
+            .map_err(|_| "Serial state unavailable".to_string())?;
+        *current = Some(command_port);
     }
 
     thread::spawn(move || {
@@ -109,7 +121,28 @@ fn start_serial_listener(
 
 #[tauri::command]
 fn stop_serial_listener(state: State<'_, SerialState>) -> Result<(), String> {
-    stop_current_listener(&state)
+    stop_current_listener(&state)?;
+    let mut command_port = state
+        .command_port
+        .lock()
+        .map_err(|_| "Serial state unavailable".to_string())?;
+    *command_port = None;
+    Ok(())
+}
+
+#[tauri::command]
+fn send_serial_command(command: String, state: State<'_, SerialState>) -> Result<(), String> {
+    let command_port = state
+        .command_port
+        .lock()
+        .map_err(|_| "Serial state unavailable".to_string())?
+        .clone()
+        .ok_or_else(|| "Serial port is not connected".to_string())?;
+    let mut port = command_port
+        .lock()
+        .map_err(|_| "Serial command port unavailable".to_string())?;
+    port.write_all(format!("{command}\n").as_bytes())
+        .map_err(|error| format!("Failed to send serial command: {error}"))
 }
 
 #[tauri::command]
@@ -139,6 +172,12 @@ fn export_telemetry_csv(csv: String, path: String) -> Result<String, String> {
     Ok(path)
 }
 
+fn extract_json(raw: &str) -> Option<&str> {
+    let start = raw.find('{')?;
+    let end = raw.rfind('}')?;
+    (end >= start).then(|| &raw[start..=end])
+}
+
 fn stop_current_listener(state: &SerialState) -> Result<(), String> {
     let current = state
         .stop
@@ -152,25 +191,36 @@ fn stop_current_listener(state: &SerialState) -> Result<(), String> {
 }
 
 fn read_serial_lines(
-    port: Box<dyn SerialPort>,
+    mut port: Box<dyn SerialPort>,
     stop: Arc<std::sync::atomic::AtomicBool>,
     app: tauri::AppHandle,
 ) {
-    let mut reader = BufReader::new(port);
-    let mut line = String::new();
+    let mut buffer = Vec::new();
+    let mut chunk = [0_u8; 256];
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-        line.clear();
-        match reader.read_line(&mut line) {
+        match port.read(&mut chunk) {
             Ok(0) => continue,
-            Ok(_) => {
-                let raw = line.trim();
-                let json = raw
-                    .find('{')
-                    .and_then(|start| raw[start..].rfind('}').map(|end| &raw[start..=start + end]));
-                if let Some(json) = json {
-                    if let Ok(raw) = serde_json::from_str::<RawTelemetryMessage>(json) {
-                        let message = TelemetryMessage::from(raw);
-                        let _ = app.emit("telemetry", message);
+            Ok(count) => {
+                buffer.extend_from_slice(&chunk[..count]);
+                while let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
+                    let line = buffer.drain(..=newline).collect::<Vec<_>>();
+                    let raw = String::from_utf8_lossy(&line).trim().to_owned();
+                    if raw.is_empty() {
+                        continue;
+                    }
+                    let _ = app.emit("serial_line", raw.clone());
+                    let Some(json) = extract_json(&raw) else {
+                        continue;
+                    };
+                    match serde_json::from_str::<RawTelemetryMessage>(json) {
+                        Ok(raw) => {
+                            let message = TelemetryMessage::from(raw);
+                            let _ = app.emit("telemetry", message);
+                        }
+                        Err(error) => {
+                            let _ = app
+                                .emit("serial_error", format!("Invalid telemetry JSON: {error}"));
+                        }
                     }
                 }
             }
@@ -187,11 +237,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(SerialState {
             stop: Mutex::new(None),
+            command_port: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
             start_serial_listener,
             stop_serial_listener,
+            send_serial_command,
             export_telemetry_csv
         ])
         .run(tauri::generate_context!())

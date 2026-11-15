@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { Icon } from "./components/Icon";
 import { SensorCard } from "./components/SensorCard";
@@ -40,6 +41,7 @@ function App() {
     clearTelemetry: clearTelemetryData,
     startSerialListener,
     stopSerialListener,
+    sendSerialCommand,
     listSerialPorts,
   } = useTelemetry({ connected, dataSource });
 
@@ -62,6 +64,30 @@ function App() {
   useEffect(() => {
     const timer = window.setInterval(() => setUtcNow(new Date()), 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>("serial_line", (event) => {
+      if (event.payload === "CALIBRATION_STARTED") {
+        setIsCalibrationStarted(true);
+        setIsCalibrationComplete(false);
+        setLog("Calibration started — keep vehicle steady");
+      } else if (event.payload.startsWith("CALIBRATION_PROGRESS:")) {
+        setLog(`Calibration running — ${event.payload.split(":")[1]} samples`);
+      } else if (event.payload.startsWith("CALIBRATION_COMPLETE:")) {
+        setIsCalibrationStarted(true);
+        setIsCalibrationComplete(true);
+        setLog("Calibration complete — offsets saved to ESP32");
+      } else if (event.payload.startsWith("CALIBRATION_ERROR:")) {
+        setIsCalibrationStarted(false);
+        setIsCalibrationComplete(false);
+        setLog(`Calibration error — ${event.payload.slice("CALIBRATION_ERROR:".length)}`);
+      }
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+    return () => unlisten?.();
   }, []);
 
   const altitude =
@@ -172,14 +198,30 @@ function App() {
           ? "SENDING"
           : "FIRED";
   const [isLogExpanded, setIsLogExpanded] = useState(false);
-  const startCalibration = () => {
+  const startCalibration = async () => {
+    if (dataSource !== DUMMY_SOURCE) {
+      try {
+        await sendSerialCommand("CALIBRATE_START");
+      } catch (error) {
+        setLog(`Calibration error: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+    }
     setIsCalibrationStarted(true);
     setIsCalibrationComplete(false);
-    setLog("14:32:13.104  Sensor calibration started — hold vehicle steady");
+    setLog("Calibration started — keep vehicle steady");
   };
-  const finishCalibration = () => {
+  const finishCalibration = async () => {
+    if (dataSource !== DUMMY_SOURCE) {
+      try {
+        await sendSerialCommand("CALIBRATE_FINISH");
+      } catch (error) {
+        setLog(`Calibration error: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+    }
     setIsCalibrationComplete(true);
-    setLog("14:32:18.772  Sensor calibration complete — offsets saved");
+    setLog("Calibration complete — offsets saved");
   };
   const closeCalibration = () => {
     setIsCalibrationOpen(false);
@@ -637,6 +679,18 @@ function App() {
               <span className="calibration-axis axis-x">X</span>
               <span className="calibration-axis axis-y">Y</span>
               <span className="calibration-axis axis-z">Z</span>
+            </div>
+            <div className="calibration-instructions">
+              <b>Calibration steps</b>
+              <ol>
+                <li>Place the vehicle in its normal flight position.</li>
+                <li>Click Start calibration and keep it completely still.</li>
+                <li>Wait 5–10 seconds, then click Calibration complete.</li>
+              </ol>
+              <small>
+                The status changes to “Calibration complete” when the ESP32 has
+                saved the sensor offsets.
+              </small>
             </div>
             <div className="calibration-status">
               <span className={`calibration-indicator ${isCalibrationComplete ? "complete" : isCalibrationStarted ? "active" : ""}`} />

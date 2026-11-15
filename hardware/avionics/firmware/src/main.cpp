@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
+#include <Preferences.h>
 #include <cmath>
 #include <initializer_list>
 
@@ -28,6 +29,79 @@ float telemetryGyroY = 0.0F;
 float telemetryGyroZ = 0.0F;
 uint32_t lastReadMs = 0;
 uint32_t lastRetryMs = 0;
+Preferences calibrationStorage;
+bool calibrationActive = false;
+uint32_t calibrationSamples = 0;
+float calibrationAccelX = 0.0F;
+float calibrationAccelY = 0.0F;
+float calibrationAccelZ = 0.0F;
+float calibrationGyroX = 0.0F;
+float calibrationGyroY = 0.0F;
+float calibrationGyroZ = 0.0F;
+float accelOffsetX = 0.0F;
+float accelOffsetY = 0.0F;
+float accelOffsetZ = 0.0F;
+float gyroOffsetX = 0.0F;
+float gyroOffsetY = 0.0F;
+float gyroOffsetZ = 0.0F;
+
+void loadCalibration() {
+    calibrationStorage.begin("calibration", true);
+    accelOffsetX = calibrationStorage.getFloat("accelX", 0.0F);
+    accelOffsetY = calibrationStorage.getFloat("accelY", 0.0F);
+    accelOffsetZ = calibrationStorage.getFloat("accelZ", 0.0F);
+    gyroOffsetX = calibrationStorage.getFloat("gyroX", 0.0F);
+    gyroOffsetY = calibrationStorage.getFloat("gyroY", 0.0F);
+    gyroOffsetZ = calibrationStorage.getFloat("gyroZ", 0.0F);
+    calibrationStorage.end();
+}
+
+void saveCalibration() {
+    calibrationStorage.begin("calibration", false);
+    calibrationStorage.putFloat("accelX", accelOffsetX);
+    calibrationStorage.putFloat("accelY", accelOffsetY);
+    calibrationStorage.putFloat("accelZ", accelOffsetZ);
+    calibrationStorage.putFloat("gyroX", gyroOffsetX);
+    calibrationStorage.putFloat("gyroY", gyroOffsetY);
+    calibrationStorage.putFloat("gyroZ", gyroOffsetZ);
+    calibrationStorage.end();
+}
+
+void handleCalibrationCommand(const String& command) {
+    if (command == "CALIBRATE_START") {
+        if (!mpuReady) {
+            Serial.println("CALIBRATION_ERROR:MPU6050 belum siap");
+            return;
+        }
+        calibrationActive = true;
+        calibrationSamples = 0;
+        calibrationAccelX = calibrationAccelY = calibrationAccelZ = 0.0F;
+        calibrationGyroX = calibrationGyroY = calibrationGyroZ = 0.0F;
+        Serial.println("CALIBRATION_STARTED");
+    } else if (command == "CALIBRATE_FINISH") {
+        if (!calibrationActive || calibrationSamples == 0) {
+            Serial.println("CALIBRATION_ERROR:belum ada sampel");
+            return;
+        }
+        const float samples = static_cast<float>(calibrationSamples);
+        accelOffsetX = calibrationAccelX / samples;
+        accelOffsetY = calibrationAccelY / samples;
+        accelOffsetZ = calibrationAccelZ / samples - 9.80665F;
+        gyroOffsetX = calibrationGyroX / samples;
+        gyroOffsetY = calibrationGyroY / samples;
+        gyroOffsetZ = calibrationGyroZ / samples;
+        saveCalibration();
+        calibrationActive = false;
+        Serial.printf("CALIBRATION_COMPLETE:%lu\n",
+                      static_cast<unsigned long>(calibrationSamples));
+    }
+}
+
+void readSerialCommands() {
+    if (!Serial.available()) return;
+    const String command = Serial.readStringUntil('\n');
+    handleCalibrationCommand(command);
+}
 
 bool isPresent(uint8_t address) {
     Wire.beginTransmission(address);
@@ -114,6 +188,25 @@ void printMpu() {
     telemetryGyroY = gyro.gyro.y;
     telemetryGyroZ = gyro.gyro.z;
     telemetryTemperature = temperature.temperature;
+    if (calibrationActive) {
+        calibrationAccelX += accel.acceleration.x;
+        calibrationAccelY += accel.acceleration.y;
+        calibrationAccelZ += accel.acceleration.z;
+        calibrationGyroX += gyro.gyro.x;
+        calibrationGyroY += gyro.gyro.y;
+        calibrationGyroZ += gyro.gyro.z;
+        ++calibrationSamples;
+        if (calibrationSamples % 10 == 0) {
+            Serial.printf("CALIBRATION_PROGRESS:%lu\n",
+                          static_cast<unsigned long>(calibrationSamples));
+        }
+    }
+    telemetryAccelX -= accelOffsetX;
+    telemetryAccelY -= accelOffsetY;
+    telemetryAccelZ -= accelOffsetZ;
+    telemetryGyroX -= gyroOffsetX;
+    telemetryGyroY -= gyroOffsetY;
+    telemetryGyroZ -= gyroOffsetZ;
 }
 
 void printBmp() {
@@ -136,7 +229,7 @@ void printBmp() {
 }
 
 void printTelemetryJson() {
-    if (!mpuReady || !bmpReady || telemetryPressure <= 0.0F) return;
+    if (!bmpReady || telemetryPressure <= 0.0F) return;
 
     Serial.printf(
         "{\"temperature\":%.2f,\"pressure\":%.2f,\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,\"gyroX\":%.3f,\"gyroY\":%.3f,\"gyroZ\":%.3f}\n",
@@ -165,12 +258,14 @@ void setup() {
     }
     Wire.setTimeOut(50);
     scanI2c();
+    loadCalibration();
     initMissingSensors();
     lastRetryMs = millis();
     lastReadMs = millis();
 }
 
 void loop() {
+    readSerialCommands();
     const uint32_t now = millis();
     if (now - lastReadMs >= kReadIntervalMs) {
         lastReadMs = now;
