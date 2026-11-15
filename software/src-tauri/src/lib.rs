@@ -43,6 +43,15 @@ struct TelemetryMessage {
     acceleration: f64,
     gyroscope: f64,
     altitude: f64,
+    #[serde(rename = "accelX")]
+    accel_x: f64,
+    #[serde(rename = "accelY")]
+    accel_y: f64,
+    #[serde(rename = "accelZ")]
+    accel_z: f64,
+    roll: f64,
+    pitch: f64,
+    yaw: f64,
 }
 
 impl From<RawTelemetryMessage> for TelemetryMessage {
@@ -52,6 +61,10 @@ impl From<RawTelemetryMessage> for TelemetryMessage {
         let gyroscope =
             (raw.gyro_x.powi(2) + raw.gyro_y.powi(2) + raw.gyro_z.powi(2)).sqrt() * 57.295779513;
         let altitude = 44330.0 * (1.0 - (raw.pressure / 1013.25).powf(0.19029495));
+        let roll = raw.accel_y.atan2(raw.accel_z).to_degrees();
+        let pitch = (-raw.accel_x)
+            .atan2((raw.accel_y.powi(2) + raw.accel_z.powi(2)).sqrt())
+            .to_degrees();
 
         Self {
             temperature: raw.temperature,
@@ -59,6 +72,12 @@ impl From<RawTelemetryMessage> for TelemetryMessage {
             acceleration,
             gyroscope,
             altitude,
+            accel_x: raw.accel_x,
+            accel_y: raw.accel_y,
+            accel_z: raw.accel_z,
+            roll,
+            pitch,
+            yaw: 0.0,
         }
     }
 }

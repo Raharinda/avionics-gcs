@@ -8,4 +8,10 @@ export type TelemetryPoint = {
   acceleration: number;
   gyroscope: number;
   altitude: number;
+  accelX: number;
+  accelY: number;
+  accelZ: number;
+  roll: number;
+  pitch: number;
+  yaw: number;
 };
