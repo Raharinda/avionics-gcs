@@ -19,6 +19,8 @@ function App() {
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
   const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
   const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
     new Map<string, {
       connected: boolean;
@@ -52,6 +54,11 @@ function App() {
     const timer = window.setInterval(() => {
       void refreshSerialPorts();
     }, 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setUtcNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -177,9 +184,10 @@ function App() {
     setIsCalibrationStarted(false);
     setIsCalibrationComplete(false);
   };
+  const utcTime = utcNow.toISOString().slice(11, 19);
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${isDarkMode ? "dark-mode" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">G</div>
@@ -190,20 +198,22 @@ function App() {
           </span>
         </div>
         <nav className="phase-nav">
-          {(["Initialization", "Flight", "Recovery"] as Phase[]).map((item) => (
-            <div
-              key={item}
-              className={`phase-item ${phase === item ? "active" : ""} ${item === "Recovery" ? "future" : ""}`}
-            >
-              <span className="phase-dot" />
-              {item}
-            </div>
+          {(["Initialization", "Flight", "Recovery"] as Phase[]).map((item, index, phases) => (
+            <span className="phase-group" key={item}>
+              <span
+                className={`phase-item ${phase === item ? "active" : ""} ${item === "Recovery" ? "future" : ""}`}
+              >
+                <span className="phase-dot" />
+                {item}
+              </span>
+              {index < phases.length - 1 && <span className="phase-connector" />}
+            </span>
           ))}
         </nav>
         <div className="header-actions">
           <div className="utc">
-            <b>--:--:--</b>
-            <span>NO UTC DATA</span>
+            <b>{utcTime} UTC</b>
+            <span>LAPTOP UTC</span>
           </div>
           <select
             aria-label="Data source"
@@ -487,34 +497,54 @@ function App() {
               <Icon name="chevron" />
             </div>
             <div className="command-footer">
-              <button
-                onClick={() => setLog("14:32:12.004  UTC clock synchronized")}
-              >
-                Set UTC
-              </button>
-              <button
-                onClick={() => {
-                  setCommandState("safe");
-                  setPhase("Initialization");
-                  setLog("14:32:12.004  Command sequence reset");
-                }}
-              >
-                Reset
-              </button>
-              <button
-                className="start"
-                onClick={startTelemetry}
-                disabled={connected}
-              >
-                Start
-              </button>
-              <button
-                className="stop"
-                onClick={stopTelemetry}
-                disabled={!connected}
-              >
-                Stop
-              </button>
+              <div className="command-footer-primary">
+                <button
+                  className="start"
+                  onClick={startTelemetry}
+                  disabled={connected}
+                >
+                  Start
+                </button>
+                <button
+                  className="stop"
+                  onClick={stopTelemetry}
+                  disabled={!connected}
+                >
+                  Stop
+                </button>
+              </div>
+              <div className="command-footer-secondary">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const synchronizedAt = new Date();
+                    setUtcNow(synchronizedAt);
+                    setLog(
+                      `${synchronizedAt.toISOString().slice(11, 23)}  UTC synchronized from laptop`,
+                    );
+                  }}
+                >
+                  Refresh UTC
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommandState("safe");
+                    setPhase("Initialization");
+                    setLog("14:32:12.004  Command sequence reset");
+                  }}
+                >
+                  Reset
+                </button>
+                <button
+                  className="theme-toggle"
+                  type="button"
+                  onClick={() => setIsDarkMode((enabled) => !enabled)}
+                  aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {isDarkMode ? "Light" : "Dark"}
+                </button>
+              </div>
             </div>
           </aside>
         </section>
