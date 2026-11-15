@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { Icon } from "./components/Icon";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
@@ -184,7 +186,7 @@ function App() {
     setIsCalibrationStarted(false);
     setIsCalibrationComplete(false);
   };
-  const downloadTelemetryCsv = () => {
+  const downloadTelemetryCsv = async () => {
     const header = "time,temperature,pressure,acceleration,gyroscope,altitude";
     const rows = series.map((point) =>
       [
@@ -197,20 +199,27 @@ function App() {
       ].join(","),
     );
     const csv = [header, ...rows].join("\r\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `telemetry-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setLog(
-      rows.length > 0
-        ? `CSV exported — ${rows.length} telemetry points`
-        : "CSV exported — no telemetry data available",
-    );
+    try {
+      const path = await save({
+        defaultPath: `telemetry-${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: "CSV files", extensions: ["csv"] }],
+      });
+      if (!path) {
+        setLog("CSV export cancelled");
+        return;
+      }
+      const savedPath = await invoke<string>("export_telemetry_csv", {
+        csv,
+        path,
+      });
+      setLog(
+        rows.length > 0
+          ? `CSV exported — ${rows.length} telemetry points (${savedPath})`
+          : `CSV exported — no telemetry data available (${savedPath})`,
+      );
+    } catch (error) {
+      setLog(`CSV export error: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
   const laptopTime = utcNow.toLocaleTimeString("en-GB", {
     hour: "2-digit",
