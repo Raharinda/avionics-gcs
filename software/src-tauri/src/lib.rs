@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -45,14 +46,11 @@ struct TelemetryMessage {
 
 impl From<RawTelemetryMessage> for TelemetryMessage {
     fn from(raw: RawTelemetryMessage) -> Self {
-        let acceleration = (raw.accel_x.powi(2) + raw.accel_y.powi(2) + raw.accel_z.powi(2))
-            .sqrt()
-            / 9.80665;
+        let acceleration =
+            (raw.accel_x.powi(2) + raw.accel_y.powi(2) + raw.accel_z.powi(2)).sqrt() / 9.80665;
         let gyroscope =
-            (raw.gyro_x.powi(2) + raw.gyro_y.powi(2) + raw.gyro_z.powi(2)).sqrt()
-                * 57.295779513;
-        let altitude =
-            44330.0 * (1.0 - (raw.pressure / 1013.25).powf(0.19029495));
+            (raw.gyro_x.powi(2) + raw.gyro_y.powi(2) + raw.gyro_z.powi(2)).sqrt() * 57.295779513;
+        let altitude = 44330.0 * (1.0 - (raw.pressure / 1013.25).powf(0.19029495));
 
         Self {
             temperature: raw.temperature,
@@ -95,7 +93,10 @@ fn start_serial_listener(
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     {
-        let mut current = state.stop.lock().map_err(|_| "Serial state unavailable".to_string())?;
+        let mut current = state
+            .stop
+            .lock()
+            .map_err(|_| "Serial state unavailable".to_string())?;
         *current = Some(stop);
     }
 
@@ -132,6 +133,12 @@ fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
         })
 }
 
+#[tauri::command]
+fn export_telemetry_csv(csv: String, path: String) -> Result<String, String> {
+    fs::write(&path, csv).map_err(|error| format!("Failed to save CSV: {error}"))?;
+    Ok(path)
+}
+
 fn stop_current_listener(state: &SerialState) -> Result<(), String> {
     let current = state
         .stop
@@ -163,7 +170,7 @@ fn read_serial_lines(
                 if let Some(json) = json {
                     if let Ok(raw) = serde_json::from_str::<RawTelemetryMessage>(json) {
                         let message = TelemetryMessage::from(raw);
-                    let _ = app.emit("telemetry", message);
+                        let _ = app.emit("telemetry", message);
                     }
                 }
             }
@@ -177,11 +184,15 @@ fn read_serial_lines(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(SerialState { stop: Mutex::new(None) })
+        .plugin(tauri_plugin_dialog::init())
+        .manage(SerialState {
+            stop: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
             start_serial_listener,
-            stop_serial_listener
+            stop_serial_listener,
+            export_telemetry_csv
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { Icon } from "./components/Icon";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
@@ -19,6 +21,8 @@ function App() {
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
   const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
   const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
     new Map<string, {
       connected: boolean;
@@ -52,6 +56,11 @@ function App() {
     const timer = window.setInterval(() => {
       void refreshSerialPorts();
     }, 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setUtcNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -177,9 +186,50 @@ function App() {
     setIsCalibrationStarted(false);
     setIsCalibrationComplete(false);
   };
+  const downloadTelemetryCsv = async () => {
+    const header = "time,temperature,pressure,acceleration,gyroscope,altitude";
+    const rows = series.map((point) =>
+      [
+        point.time,
+        point.temperature,
+        point.pressure,
+        point.acceleration,
+        point.gyroscope,
+        point.altitude,
+      ].join(","),
+    );
+    const csv = [header, ...rows].join("\r\n");
+    try {
+      const path = await save({
+        defaultPath: `telemetry-${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: "CSV files", extensions: ["csv"] }],
+      });
+      if (!path) {
+        setLog("CSV export cancelled");
+        return;
+      }
+      const savedPath = await invoke<string>("export_telemetry_csv", {
+        csv,
+        path,
+      });
+      setLog(
+        rows.length > 0
+          ? `CSV exported — ${rows.length} telemetry points (${savedPath})`
+          : `CSV exported — no telemetry data available (${savedPath})`,
+      );
+    } catch (error) {
+      setLog(`CSV export error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const laptopTime = utcNow.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${isDarkMode ? "dark-mode" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">G</div>
@@ -190,20 +240,22 @@ function App() {
           </span>
         </div>
         <nav className="phase-nav">
-          {(["Initialization", "Flight", "Recovery"] as Phase[]).map((item) => (
-            <div
-              key={item}
-              className={`phase-item ${phase === item ? "active" : ""} ${item === "Recovery" ? "future" : ""}`}
-            >
-              <span className="phase-dot" />
-              {item}
-            </div>
+          {(["Initialization", "Flight", "Recovery"] as Phase[]).map((item, index, phases) => (
+            <span className="phase-group" key={item}>
+              <span
+                className={`phase-item ${phase === item ? "active" : ""} ${item === "Recovery" ? "future" : ""}`}
+              >
+                <span className="phase-dot" />
+                {item}
+              </span>
+              {index < phases.length - 1 && <span className="phase-connector" />}
+            </span>
           ))}
         </nav>
         <div className="header-actions">
           <div className="utc">
-            <b>--:--:--</b>
-            <span>NO UTC DATA</span>
+            <b>{laptopTime}</b>
+            <span>LAPTOP TIME</span>
           </div>
           <select
             aria-label="Data source"
@@ -224,7 +276,7 @@ function App() {
           <button className="download" type="button" onClick={() => void refreshSerialPorts()}>
             Refresh ports
           </button>
-          <button className="download">
+          <button className="download" type="button" onClick={downloadTelemetryCsv}>
             <Icon name="download" /> Download CSV
           </button>
         </div>
@@ -487,34 +539,59 @@ function App() {
               <Icon name="chevron" />
             </div>
             <div className="command-footer">
-              <button
-                onClick={() => setLog("14:32:12.004  UTC clock synchronized")}
-              >
-                Set UTC
-              </button>
-              <button
-                onClick={() => {
-                  setCommandState("safe");
-                  setPhase("Initialization");
-                  setLog("14:32:12.004  Command sequence reset");
-                }}
-              >
-                Reset
-              </button>
-              <button
-                className="start"
-                onClick={startTelemetry}
-                disabled={connected}
-              >
-                Start
-              </button>
-              <button
-                className="stop"
-                onClick={stopTelemetry}
-                disabled={!connected}
-              >
-                Stop
-              </button>
+              <div className="command-footer-primary">
+                <button
+                  className="start"
+                  onClick={startTelemetry}
+                  disabled={connected}
+                >
+                  Start
+                </button>
+                <button
+                  className="stop"
+                  onClick={stopTelemetry}
+                  disabled={!connected}
+                >
+                  Stop
+                </button>
+              </div>
+              <div className="command-footer-secondary">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const synchronizedAt = new Date();
+                    setUtcNow(synchronizedAt);
+                    setLog(
+                      `${synchronizedAt.toLocaleTimeString("en-GB", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                      })}.${String(synchronizedAt.getMilliseconds()).padStart(3, "0")}  Laptop clock synchronized`,
+                    );
+                  }}
+                >
+                  Refresh UTC
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommandState("safe");
+                    setPhase("Initialization");
+                    setLog("14:32:12.004  Command sequence reset");
+                  }}
+                >
+                  Reset
+                </button>
+                <button
+                  className="theme-toggle"
+                  type="button"
+                  onClick={() => setIsDarkMode((enabled) => !enabled)}
+                  aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {isDarkMode ? "Light" : "Dark"}
+                </button>
+              </div>
             </div>
           </aside>
         </section>
