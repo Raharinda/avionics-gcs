@@ -17,9 +17,12 @@ desktop dapat membaca format ini langsung melalui backend Rust; lihat
 - Kedua sensor menggunakan satu bus `Wire`, SDA GPIO 21 dan SCL GPIO 22,
   dengan clock 100 kHz.
 - Scan bus saat startup; mencoba MPU6050 di `0x68`/`0x69` dan BMP280 di
-  `0x76`/`0x77`. Identitas chip diperiksa oleh library saat inisialisasi.
+  `0x76`/`0x77`. Identitas chip diperiksa saat inisialisasi.
 - Sensor yang belum ditemukan dicoba ulang setiap 5 detik. Sensor lainnya tetap
   dibaca. Saat perangkat tidak lagi merespons alamat I2C, program mencoba deteksi ulang.
+- MPU6050 dibaca langsung dengan driver `Mpu6050Reader`: seluruh 14 byte harus
+  diterima, konfigurasi harus sesuai, dan frame seluruhnya nol ditolak. Error
+  memicu diagnostik register dan percobaan inisialisasi ulang setelah 5 detik.
 
 ## Sambungan I2C bersama
 
@@ -48,7 +51,7 @@ perlu ditambah untuk kabel pendek.
 ## Konfigurasi dan contoh keluaran
 
 MPU6050 memakai rentang ±8 g, gyroscope ±500 °/s, dan filter 21 Hz. Keluaran
-gyroscope library tetap dalam **rad/s**. Saat diam, besar vektor percepatan
+gyroscope dalam **rad/s**. Saat diam, besar vektor percepatan
 sekitar 9,81 m/s² karena gravitasi; hasil per sumbu tergantung orientasi sensor.
 Offset sensor belum dikalibrasi. Suhu MPU6050 merupakan suhu internal chip.
 
@@ -75,8 +78,9 @@ cd ~/Documents/avionics-gcs/hardware/avionics/firmware
 ./firmware.sh build
 ```
 
-PlatformIO mengunduh library Adafruit MPU6050 dan Adafruit BMP280 beserta
-dependensinya saat build pertama. Versi library utama ditetapkan di `platformio.ini`.
+PlatformIO mengunduh library Adafruit BMP280 beserta dependensinya saat build
+pertama. Versinya ditetapkan di `platformio.ini`. Driver MPU6050 berada di
+`include/mpu6050_reader.h` dan `src/mpu6050_reader.cpp`.
 
 Hasil build berada di `.pio/build/esp32dev/`, termasuk `firmware.bin`,
 `firmware.elf`, `bootloader.bin`, dan `partitions.bin`. `firmware.bin` adalah
@@ -105,6 +109,57 @@ sebelum flash. Jika berhenti pada `Connecting...`, tahan tombol BOOT saat proses
 mulai menghubungkan, lalu lepaskan setelah upload berjalan. Keluar dari monitor
 dengan Ctrl+C. Jika pesan awal tidak terlihat, tekan EN/reset setelah monitor dibuka.
 
+## Diagnostik MPU6050 bernilai nol
+
+Versi ini mencetak `Firmware: checked-mpu6050-v1` saat startup. Setelah flash,
+pastikan penanda ini muncul agar tidak memeriksa firmware lama.
+
+Kombinasi seluruh sumbu accelerometer/gyro nol dengan suhu tetap 36,53 °C
+mengarah ke data mentah nol: rumus suhu adalah `raw / 340 + 36.53`. Angka suhu
+36,53 °C saja bukan bukti kegagalan; lihat keseluruhan frame dan diagnostik I2C.
+
+Pada library Adafruit MPU6050 2.2.9 yang sebelumnya dipakai, `getEvent()` selalu
+mengembalikan `true` dan `_read()` tidak meneruskan hasil keberhasilan baca bus.
+Pengecekan `if (!getEvent(...))` pada firmware lama tidak cukup untuk mendeteksi
+kegagalan tersebut. Driver baru memeriksa transaksi dan jumlah byte, memverifikasi
+register kontrol sebelum membaca, serta memberi batas waktu reset sensor.
+
+Register yang diharapkan setelah inisialisasi:
+
+```text
+WHO_AM_I=0x68 PWR1=0x01 PWR2=0x00 CONFIG=0x04 GYRO_CONFIG=0x08 ACCEL_CONFIG=0x10
+```
+
+`WHO_AM_I` tetap `0x68` meskipun alamat I2C dipilih `0x69`. `PWR1=0x40` menunjukkan
+sleep setelah reset; `READ_FAILED` menandakan transaksi I2C gagal. Jika data nol,
+read gagal, atau konfigurasi berubah, firmware menampilkan baris `MPU6050:` dan
+diagnostik, melewatkan sampel MPU, lalu mencoba ulang. BMP280 tetap dibaca dan
+dashboard menampilkan nilai MPU yang tidak tersedia sebagai `—`.
+
+Untuk menerapkan perbaikan, tutup Serial Monitor dan klik Disconnect di GCS,
+kemudian jalankan dari folder firmware (sesuaikan nama port):
+
+```bash
+./firmware.sh flash /dev/ttyACM0
+./firmware.sh monitor /dev/ttyACM0
+```
+
+Jika error berulang setelah flash, matikan daya sebelum memeriksa ulang kabel
+MPU6050: SDA ke D21, SCL ke D22, GND bersama, dan catu daya sesuai breakout dengan
+logika I2C 3,3 V. Periksa sambungan longgar dan kestabilan daya. BMP280 yang masih
+terbaca menunjukkan sebagian bus bekerja, tetapi belum membuktikan MPU6050 sehat.
+Simpan baris diagnostik untuk membedakan masalah daya/sleep, koneksi, atau sensor.
+
+Tes driver di komputer tanpa ESP32 (memerlukan `g++`):
+
+```bash
+./test-host.sh
+```
+
+Tes memeriksa konversi sumbu bertanda, frame nol, pembacaan tidak lengkap, NACK,
+sleep/standby, perubahan rentang, identitas chip, kegagalan konfigurasi, dan reset
+yang tidak selesai. Pengujian driver pada perangkat tetap memerlukan flash ulang.
+
 ## Mengembangkan kode
 
 Edit `src/main.cpp`, lalu build dan flash ulang. Buka folder proyek ini di VS Code
@@ -116,7 +171,8 @@ mengunduh platform dan toolchain.
 Referensi: [board ESP32 Dev Module](https://docs.platformio.org/en/stable/boards/espressif32/esp32dev.html)
 dan [panduan Arduino ESP32 di PlatformIO](https://docs.platformio.org/en/stable/tutorials/espressif32/arduino_debugging_unit_testing.html).
 
-Driver sensor: [Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
-dan [Adafruit BMP280](https://github.com/adafruit/Adafruit_BMP280_Library).
+Referensi driver MPU6050 dan rumus konversi:
+[kode Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050).
+Driver BMP280: [Adafruit BMP280](https://github.com/adafruit/Adafruit_BMP280_Library).
 Rincian hardware: [datasheet BMP280](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmp280-ds001.pdf)
 dan [pinout MPU6050](https://learn.adafruit.com/mpu6050-6-dof-accelerometer-and-gyro/pinouts).

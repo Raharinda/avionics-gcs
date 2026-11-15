@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
-#include <Adafruit_MPU6050.h>
+#include "mpu6050_reader.h"
 #include <cmath>
 #include <initializer_list>
 
@@ -12,7 +12,7 @@ constexpr uint32_t kI2cFrequencyHz = 100000;
 constexpr uint32_t kReadIntervalMs = 500;
 constexpr uint32_t kRetryIntervalMs = 5000;
 
-Adafruit_MPU6050 mpu;
+Mpu6050Reader mpu(Wire);
 Adafruit_BMP280 bmp(&Wire);
 bool mpuReady = false;
 bool bmpReady = false;
@@ -40,18 +40,35 @@ void scanI2c() {
     }
 }
 
+void printMpuDiagnostics() {
+    struct Register { const char* name; uint8_t address; };
+    constexpr Register registers[] = {
+        {"WHO_AM_I", 0x75}, {"PWR1", 0x6B}, {"PWR2", 0x6C},
+        {"CONFIG", 0x1A}, {"GYRO_CONFIG", 0x1B}, {"ACCEL_CONFIG", 0x1C}
+    };
+    Serial.print("MPU6050 diagnostics:");
+    for (const auto& reg : registers) {
+        uint8_t value = 0;
+        if (mpu.read_register(reg.address, value)) Serial.printf(" %s=0x%02X", reg.name, value);
+        else Serial.printf(" %s=READ_FAILED", reg.name);
+    }
+    Serial.println();
+}
+
 void initMissingSensors() {
     if (!mpuReady) {
         for (const uint8_t address : {0x68, 0x69}) {
-            if (isPresent(address) && mpu.begin(address, &Wire)) {
+            if (!isPresent(address)) continue;
+            const auto result = mpu.begin(address);
+            if (result == Mpu6050Reader::Status::Ok) {
                 mpuAddress = address;
                 mpuReady = true;
-                mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-                mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-                mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
                 Serial.printf("MPU6050 siap di 0x%02X\n", address);
+                printMpuDiagnostics();
                 break;
             }
+            Serial.printf("MPU6050: init 0x%02X gagal: %s\n", address, Mpu6050Reader::message(result));
+            printMpuDiagnostics();
         }
         if (!mpuReady) {
             Serial.println("MPU6050 belum terdeteksi di 0x68/0x69; coba lagi 5 detik.");
@@ -90,15 +107,19 @@ void printMpu() {
         return;
     }
 
-    sensors_event_t accel{}, gyro{}, temperature{};
-    if (!mpu.getEvent(&accel, &gyro, &temperature)) {
-        Serial.println("MPU6050: gagal membaca data.");
+    Mpu6050Reader::Sample sample{};
+    const auto result = mpu.read(sample);
+    if (result != Mpu6050Reader::Status::Ok) {
+        Serial.printf("MPU6050: %s; inisialisasi ulang dalam 5 detik.\n", Mpu6050Reader::message(result));
+        printMpuDiagnostics();
+        mpuReady = false;
+        lastRetryMs = millis();
         return;
     }
     Serial.printf("MPU6050 | Accel [m/s^2] X=%.3f Y=%.3f Z=%.3f\n",
-                  accel.acceleration.x, accel.acceleration.y, accel.acceleration.z);
+                  sample.accel[0], sample.accel[1], sample.accel[2]);
     Serial.printf("        | Gyro [rad/s]  X=%.3f Y=%.3f Z=%.3f | Suhu=%.2f C\n",
-                  gyro.gyro.x, gyro.gyro.y, gyro.gyro.z, temperature.temperature);
+                  sample.gyro[0], sample.gyro[1], sample.gyro[2], sample.temperature_c);
 }
 
 void printBmp() {
@@ -125,6 +146,7 @@ void setup() {
     delay(500);
 
     Serial.println("\nESP32: MPU6050 + BMP280 pada satu bus I2C");
+    Serial.println("Firmware: checked-mpu6050-v1");
     Serial.printf("SDA=GPIO%d (D21), SCL=GPIO%d (D22), bus=%lu Hz\n",
                   kSdaPin, kSclPin, static_cast<unsigned long>(kI2cFrequencyHz));
     if (!Wire.begin(kSdaPin, kSclPin, kI2cFrequencyHz)) {

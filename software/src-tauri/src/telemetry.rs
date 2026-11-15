@@ -194,4 +194,16 @@ mod tests {
         let data = samples(decoder.feed(b"BMP280  | Suhu=20 C | Tekanan=1000 hPa\n--- Waktu: 500 ms ---\n"));
         assert_eq!(data[0].elapsed_ms, 0);
     }
+
+    #[test]
+    fn checked_firmware_mpu_error_keeps_bmp_readings_without_zero_mpu_values() {
+        let text = b"--- Waktu: 1000 ms ---\nMPU6050: seluruh 14 byte data nol; sampel tidak valid; inisialisasi ulang dalam 5 detik.\nMPU6050 diagnostics: WHO_AM_I=0x68 PWR1=0x40\nBMP280  | Suhu=29.53 C | Tekanan=994.40 hPa\n--- Waktu: 1500 ms ---\n";
+        let data = samples(Decoder::default().feed(text));
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0].accel_mps2, None);
+        assert_eq!(data[0].gyro_rads, None);
+        assert_eq!(data[0].mpu_temperature_c, None);
+        assert_eq!(data[0].temperature_c, Some(29.53));
+        assert_eq!(data[0].pressure_hpa, Some(994.4));
+    }
 }
