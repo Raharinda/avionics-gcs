@@ -46,14 +46,15 @@ Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust 
 | --------------------------- | -------------- |
 | Struktur repository         | Selesai        |
 | Setup Tauri 2 + React + TS  | Selesai        |
-| Firmware Avionics dan GCS   | Belum dimulai  |
+| Firmware Avionics (MPU6050 + BMP280 via I2C) | Pembacaan sensor dan output Serial tersedia; ESP-NOW belum |
+| Firmware GCS               | Belum dimulai  |
 | Serial reader (Rust)        | Belum dimulai  |
 | Dashboard real-time         | Belum dimulai  |
 | SQLite dan CSV export       | Belum dimulai  |
 | GitHub Actions (CI/CD)      | Rencana        |
 | Ground Control              | Rencana        |
 
-Hal yang masih ditentukan nanti: sensor tambahan selain MPU6050, sampling rate, frekuensi kirim telemetry, skema database, pinout, dan mekanisme otorisasi kontrol.
+Firmware avionics menggunakan MPU6050 dan BMP280 pada satu bus I2C: SDA GPIO 21 (D21), SCL GPIO 22 (D22), dengan output Serial setiap 500 ms. Hal yang masih ditentukan nanti: sensor tambahan, sampling rate produksi, frekuensi kirim telemetry, skema database, pinout tambahan, dan mekanisme otorisasi kontrol.
 
 ---
 
@@ -101,15 +102,17 @@ cargo check             # Cek kode Rust (jalankan dari src-tauri/)
 
 ### Firmware
 
-Firmware memakai C++ dengan Arduino Framework dan dikelola dengan PlatformIO. Konfigurasi board dan pinout didokumentasikan di folder firmware masing-masing setelah hardware final.
+Firmware avionics memakai C++ dengan Arduino Framework dan PlatformIO untuk ESP32 DevKit klasik. Panduan sambungan MPU6050 dan BMP280, konfigurasi, serta contoh keluaran tersedia di [README firmware avionics](hardware/avionics/firmware/README.md).
 
 ```bash
 cd hardware/avionics/firmware
-pio run                 # Compile firmware avionics
-
-cd ../../gcs/firmware
-pio run                 # Compile firmware GCS
+./firmware.sh build     # Compile firmware avionics
+./firmware.sh ports     # Lihat port ESP32
+./firmware.sh flash     # Build dan upload melalui USB
+./firmware.sh monitor   # Serial Monitor, 115200 baud; keluar dengan Ctrl+C
 ```
+
+Hubungkan ESP32 dengan kabel USB data sebelum flash. Port dapat ditentukan secara eksplisit, misalnya `./firmware.sh flash /dev/ttyUSB0` dan `./firmware.sh monitor /dev/ttyUSB0`. Firmware GCS di `hardware/gcs/firmware` masih berupa placeholder.
 
 ---
 
