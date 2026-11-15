@@ -59,6 +59,18 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
     return () => unlisten?.();
   }, []);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>("serial_line", (event) => {
+      if (event.payload.includes("{")) {
+        console.debug("Serial telemetry line:", event.payload);
+      }
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+    return () => unlisten?.();
+  }, []);
+
   const loadDummyData = () => {
     setSeries(dummySeries);
     setPacketCount(28492);
@@ -77,6 +89,9 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
   const stopSerialListener = () =>
     invoke<void>("stop_serial_listener");
 
+  const sendSerialCommand = (command: string) =>
+    invoke<void>("send_serial_command", { command });
+
   const listSerialPorts = () =>
     invoke<SerialPortInfo[]>("list_serial_ports");
 
@@ -87,6 +102,7 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
     clearTelemetry,
     startSerialListener,
     stopSerialListener,
+    sendSerialCommand,
     listSerialPorts,
   };
 }

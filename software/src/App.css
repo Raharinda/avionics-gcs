@@ -51,6 +51,10 @@ button { cursor: pointer; border: 0; }
 .axis-y { left: 23%; bottom: 27%; background: #477ef2; }
 .axis-z { left: 50%; top: 16%; background: #27a96a; }
 .calibration-status { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 10px 12px; border-radius: 10px; color: #717b86; background: #f6f8f9; font-size: 12px; }
+.calibration-instructions { margin-bottom: 12px; padding: 12px 14px; border: 1px solid #edf0f2; border-radius: 11px; color: #717b86; background: #fafbfc; font-size: 11px; }
+.calibration-instructions b { color: #29303a; font-size: 12px; }
+.calibration-instructions ol { margin: 8px 0 6px 18px; padding: 0; line-height: 1.6; }
+.calibration-instructions small { display: block; color: #9aa2ad; line-height: 1.45; }
 .calibration-indicator { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #b8c0c7; }
 .calibration-indicator.active { background: #477ef2; box-shadow: 0 0 0 4px #477ef21c; }
 .calibration-indicator.complete { background: #16c96b; box-shadow: 0 0 0 4px #16c96b1c; }
@@ -101,3 +105,6 @@ button { cursor: pointer; border: 0; }
 .dark-mode .calibration-grid { background-image: linear-gradient(#48545f 1px, transparent 1px), linear-gradient(90deg, #48545f 1px, transparent 1px); }
 .dark-mode .calibration-face { border-color: #56636e; color: #d8e0e7; background: rgba(31, 39, 46, .9); }
 .dark-mode .calibration-status { color: #b9c3cc; background: #252d35; }
+.dark-mode .calibration-instructions { border-color: #37414c; color: #b9c3cc; background: #252d35; }
+.dark-mode .calibration-instructions b { color: #e1e7ec; }
+.dark-mode .calibration-instructions small { color: #9da8b4; }
