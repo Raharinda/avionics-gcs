@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { createDummyTelemetryPoint, dummySeries, DUMMY_SOURCE } from "../data/dummyTelemetry";
-import type { TelemetryPoint } from "../types/telemetry";
+import { createDummyTelemetryPoint, dummySeries, DUMMY_SOURCE } from "../../../data/dummyTelemetry";
+import type { TelemetryPoint } from "../../../types/telemetry";
 type UseTelemetryOptions = {
     connected: boolean;
     dataSource: string;

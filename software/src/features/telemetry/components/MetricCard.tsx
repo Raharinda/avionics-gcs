@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Card } from "../atoms/Card";
+import { Card } from "../../../components/ui/Card";
 type Props = {
     title: string;
     value: string;

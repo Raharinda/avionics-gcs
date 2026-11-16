@@ -1,9 +1,9 @@
 import { memo, useState } from "react";
-import { RocketViewport } from "../molecules/RocketViewport";
-import { rocketAxes, sensorAxisLabel } from "../../data/rocketAxes";
-import { useTelemetryFreshness } from "../../hooks/useTelemetryFreshness";
-import type { ImuState } from "../../types/imu";
-import type { TelemetryPoint } from "../../types/telemetry";
+import { RocketViewport } from "./RocketViewport";
+import { rocketAxes, sensorAxisLabel } from "../../../data/rocketAxes";
+import { useTelemetryFreshness } from "../../telemetry/hooks/useTelemetryFreshness";
+import type { ImuState } from "../../../types/imu";
+import type { TelemetryPoint } from "../../../types/telemetry";
 type Props = {
     latestTelemetry: TelemetryPoint | null;
     receivedAt: number | null;

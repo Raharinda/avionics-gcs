@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { SerialLogBuffer } from "../data/serialLogBuffer";
+import { SerialLogBuffer } from "../../../data/serialLogBuffer";
 export function useSerialLog(resetVersion: number) {
     const [buffer] = useState(() => new SerialLogBuffer());
     const [rawSerialLine, setRawSerialLine] = useState("");

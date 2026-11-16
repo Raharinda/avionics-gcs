@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense } from "react";
-import type { TelemetryPoint } from "../../types/telemetry";
-import { Card } from "../atoms/Card";
+import type { TelemetryPoint } from "../../../types/telemetry";
+import { Card } from "../../../components/ui/Card";
 const TelemetryChart = lazy(() => import("./TelemetryChart").then((module) => ({ default: module.TelemetryChart })));
 type SensorKey = "temperature" | "pressure" | "acceleration" | "gyroscope";
 type SensorCardProps = {

@@ -1,7 +1,7 @@
 import { memo } from "react";
-import { SensorCard } from "../molecules/SensorCard";
-import { useSampledValue } from "../../hooks/useSampledValue";
-import type { TelemetryPoint } from "../../types/telemetry";
+import { SensorCard } from "./SensorCard";
+import { useSampledValue } from "../hooks/useSampledValue";
+import type { TelemetryPoint } from "../../../types/telemetry";
 const TEMPERATURE_DOMAIN: [
     number,
     number
