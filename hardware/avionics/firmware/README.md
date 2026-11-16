@@ -4,19 +4,25 @@ Firmware untuk ESP32 DevKit klasik / ESP-WROOM-32, menggunakan Arduino framework
 dan PlatformIO. Target bawaan `esp32dev`, flash 4 MB. Untuk ESP32-C3/S3, konfigurasi
 board harus disesuaikan sebelum build dan flash.
 
-Firmware ini membaca sensor dan menampilkan hasil lewat USB Serial. Pengiriman
-ESP-NOW dan integrasi dengan aplikasi desktop belum diimplementasikan.
+Firmware `imu3d-v2` mengirim data sensor dan orientasi relatif melalui USB
+Serial ke aplikasi desktop GCS. Pengiriman ESP-NOW belum diimplementasikan.
+Lihat [panduan kalibrasi enam pose dan logika 3D](../../../docs/imu-orientation.md)
+untuk menentukan acuan awal, pemasangan sumbu, dan membaca profil tersimpan.
 
 ## Isi firmware
 
 - Membaca MPU6050: percepatan X/Y/Z (m/s²), kecepatan sudut X/Y/Z (rad/s),
   serta suhu internal chip (°C).
 - Membaca BMP280: suhu (°C) dan tekanan udara (hPa).
-- Hasil ditampilkan melalui Serial 115200 baud setiap 500 ms.
+- Target pembacaan IMU 100 Hz, pembacaan BMP280 2 Hz, dan telemetry JSON
+  10 Hz melalui Serial 115200 baud.
+- Kalibrasi ±X/±Y/±Z menyimpan offset/skala akselerometer dan bias gyro ke
+  NVS ESP32. Quaternion relatif dikirim setelah operator menetapkan acuan.
 - Kedua sensor menggunakan satu bus `Wire`, SDA GPIO 21 dan SCL GPIO 22,
   dengan clock 100 kHz.
 - Scan bus saat startup; mencoba MPU6050 di `0x68`/`0x69` dan BMP280 di
-  `0x76`/`0x77`. Identitas chip diperiksa oleh library saat inisialisasi.
+  `0x76`/`0x77`. Driver MPU memeriksa identitas, konfigurasi, dan jumlah byte
+  pembacaan; sampel seluruhnya nol ditolak.
 - Sensor yang belum ditemukan dicoba ulang setiap 5 detik. Sensor lainnya tetap
   dibaca. Saat perangkat tidak lagi merespons alamat I2C, program mencoba deteksi ulang.
 
@@ -47,9 +53,9 @@ perlu ditambah untuk kabel pendek.
 ## Konfigurasi dan contoh keluaran
 
 MPU6050 memakai rentang ±8 g, gyroscope ±500 °/s, dan filter 21 Hz. Keluaran
-gyroscope library tetap dalam **rad/s**. Saat diam, besar vektor percepatan
+gyroscope dikonversi ke **rad/s** oleh driver lokal. Saat diam, besar vektor percepatan
 sekitar 9,81 m/s² karena gravitasi; hasil per sumbu tergantung orientasi sensor.
-Offset sensor belum dikalibrasi. Suhu MPU6050 merupakan suhu internal chip.
+Kalibrasi tersedia melalui dialog aplikasi desktop. Suhu MPU6050 merupakan suhu internal chip.
 
 BMP280 memakai oversampling suhu ×2, tekanan ×16, filter ×16, dan standby 250 ms.
 Library menerapkan koefisien kompensasi pabrik. Nilai tekanan diubah dari Pa
@@ -58,13 +64,8 @@ menjadi hPa dengan membagi 100.
 Contoh format berikut ilustrasi, bukan hasil pengujian perangkat:
 
 ```text
-MPU6050 siap di 0x68
-BMP280 siap di 0x76
-
---- Waktu: 2000 ms ---
-MPU6050 | Accel [m/s^2] X=0.020 Y=-0.030 Z=9.810
-        | Gyro [rad/s]  X=0.001 Y=-0.002 Z=0.001 | Suhu=29.10 C
-BMP280  | Suhu=28.40 C | Tekanan=1008.25 hPa
+Firmware: imu3d-v2 | MPU6050 + BMP280 | SDA=D21 SCL=D22
+{"timestampMs":2000,"temperature":29.10,"pressure":1008.25,"accelX":0.020,"accelY":-0.030,"accelZ":9.810,"gyroX":0.001,"gyroY":-0.002,"gyroZ":0.001,"imuValid":true,"calibrated":false,"referenceSet":false,"orientation":null}
 ```
 
 ## Build
@@ -74,8 +75,9 @@ cd ~/Documents/avionics-gcs/hardware/avionics/firmware
 ./firmware.sh build
 ```
 
-PlatformIO mengunduh library Adafruit MPU6050 dan Adafruit BMP280 beserta
-dependensinya saat build pertama. Versi library utama ditetapkan di `platformio.ini`.
+PlatformIO mengunduh library Adafruit BMP280 beserta dependensinya saat build
+pertama. MPU6050 memakai driver register lokal dengan pemeriksaan I2C.
+Versi library utama ditetapkan di `platformio.ini`.
 
 Hasil build berada di `.pio/build/esp32dev/`, termasuk `firmware.bin`,
 `firmware.elf`, `bootloader.bin`, dan `partitions.bin`. `firmware.bin` adalah
@@ -100,7 +102,7 @@ Untuk memilih port secara eksplisit:
 ```
 
 Flash mengganti firmware yang sedang terpasang di board. Tutup Serial Monitor
-sebelum flash. Jika berhenti pada `Connecting...`, tahan tombol BOOT saat proses
+dan hentikan koneksi GCS sebelum flash. Jika berhenti pada `Connecting...`, tahan tombol BOOT saat proses
 mulai menghubungkan, lalu lepaskan setelah upload berjalan. Keluar dari monitor
 dengan Ctrl+C. Jika pesan awal tidak terlihat, tekan EN/reset setelah monitor dibuka.
 
@@ -115,7 +117,11 @@ mengunduh platform dan toolchain.
 Referensi: [board ESP32 Dev Module](https://docs.platformio.org/en/stable/boards/espressif32/esp32dev.html)
 dan [panduan Arduino ESP32 di PlatformIO](https://docs.platformio.org/en/stable/tutorials/espressif32/arduino_debugging_unit_testing.html).
 
-Driver sensor: [Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
-dan [Adafruit BMP280](https://github.com/adafruit/Adafruit_BMP280_Library).
+Tes driver dan perhitungan orientasi tanpa perangkat: jalankan `./test-host.sh`
+(memerlukan compiler `g++`). Tes tidak menggantikan pemeriksaan gerakan dan
+penyimpanan pada perangkat asli.
+
+Driver sensor: `src/mpu6050_reader.cpp` dan
+[Adafruit BMP280](https://github.com/adafruit/Adafruit_BMP280_Library).
 Rincian hardware: [datasheet BMP280](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmp280-ds001.pdf)
 dan [pinout MPU6050](https://learn.adafruit.com/mpu6050-6-dof-accelerometer-and-gyro/pinouts).

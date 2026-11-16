@@ -1,6 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+.connection-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.connection-port { display: block; max-width: 235px; overflow: hidden; text-overflow: ellipsis; }
+.connection-copy small { color: #9299a3; font-size: 10px; font-weight: 400; }
+
 :root { font-family: "DM Sans", sans-serif; color: #17202d; background: #f5f6f8; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 html, body, #root { overscroll-behavior-y: none; }
@@ -123,3 +127,67 @@ button { cursor: pointer; border: 0; }
 .dark-mode .calibration-instructions { border-color: #37414c; color: #b9c3cc; background: #252d35; }
 .dark-mode .calibration-instructions b { color: #e1e7ec; }
 .dark-mode .calibration-instructions small { color: #9da8b4; }
+
+/* Six-face IMU calibration and relative attitude */
+.imu-wizard { width: min(1040px, 96vw); max-height: 92vh; overflow-y: auto; }
+.imu-wizard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 16px; }
+.imu-wizard h3 { font-size: 15px; margin: 14px 0 8px; }
+.imu-wizard p { color: #667585; font-size: 12px; line-height: 1.65; }
+.imu-board-preview { height: 240px; border-radius: 14px; overflow: hidden; background: #f7f9fa; }
+.imu-board-preview .rocket-model-3d { width: 100%; height: 100%; }
+.imu-mount-preview { height: 220px; border-radius: 12px; overflow: hidden; background: #f7f9fa; }
+.imu-mount-preview .rocket-model-3d { width: 100%; height: 100%; }
+.imu-preview-title { margin: 16px 0 8px; font-size: 10px; color: #718197; letter-spacing: .05em; }
+.rocket-view-tabs { display: flex; gap: 6px; margin-top: 10px; }
+.rocket-view-tabs button { border: 1px solid #d6e0ec; border-radius: 7px; background: #f4f7fb; color: #48627f; padding: 7px 9px; font-size: 10px; }
+.rocket-view-tabs button[aria-pressed="true"] { background: #e4efff; border-color: #759bd9; color: #28568b; }
+.rocket-view-tabs button:disabled { opacity: .45; cursor: not-allowed; }
+.dark-mode .rocket-view-tabs button { background: #253344; border-color: #41556e; color: #d1dff0; }
+.dark-mode .rocket-view-tabs button[aria-pressed="true"] { background: #344e73; border-color: #7297ca; }
+.imu-pose-feedback { margin-top: 12px; padding: 12px; border: 1px solid #cbdcf7; border-radius: 10px; background: #eef4ff; color: #314b69; font-size: 12px; }
+.imu-pose-feedback.warning { background: #fff4e8; border-color: #edc99b; color: #85501c; }
+.imu-pose-feedback p { margin: 7px 0; color: inherit; }
+.imu-live-values { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; font: 11px/1.6 "DM Mono", monospace; }
+.imu-pose-feedback small { font-size: 10px; line-height: 1.5; }
+.dark-mode .imu-pose-feedback { background: #263952; border-color: #425b78; color: #d5e5f8; }
+.dark-mode .imu-pose-feedback.warning { background: #493826; border-color: #765837; color: #f2d3ad; }
+.dark-mode .imu-pose-feedback p { color: inherit; }
+.imu-faces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.imu-faces button { display: flex; flex-direction: column; gap: 6px; padding: 12px 8px; border: 1px solid #dce3ea; border-radius: 9px; background: #f8fafc; color: #344454; font-size: 12px; }
+.imu-faces button.selected { border-color: #477ef2; box-shadow: 0 0 0 2px #477ef21c; }
+.imu-faces button.complete { background: #e5f8ee; }
+.imu-faces small { font-size: 10px; color: #768492; }
+.imu-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.imu-actions button, .imu-modal-footer button { padding: 10px 12px; border-radius: 9px; background: #edf2f6; color: #334556; font-size: 12px; }
+.imu-actions .calibration-start, .imu-reference-button { background: #477ef2; color: white; }
+.imu-reference-button { width: 100%; padding: 13px; border-radius: 10px; font-size: 12px; }
+.imu-axis-select { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0; color: #45596c; font-size: 12px; }
+.imu-axis-select select { padding: 8px 18px; border: 1px solid #dce3ea; border-radius: 8px; background: white; color: #243b50; }
+.imu-progress label { font-size: 12px; color: #477ef2; }
+.imu-progress progress { display: block; width: 100%; height: 12px; margin-top: 8px; accent-color: #477ef2; }
+.imu-note { color: #7b8895; font-size: 10px; line-height: 1.6; }
+.imu-error, .imu-warning { padding: 10px 14px; border-radius: 9px; background: #fff2e6; color: #955321 !important; }
+.imu-message { padding: 10px 14px; background: #eef4ff; border-radius: 9px; }
+.imu-reference-status { color: #17835c !important; font-weight: 600; }
+.imu-saved-profile { margin-top: 20px; padding: 14px; border: 1px solid #dce3ea; border-radius: 12px; }
+.imu-saved-profile table { width: 100%; border-collapse: collapse; text-align: right; font: 11px "DM Mono", monospace; }
+.imu-saved-profile th, .imu-saved-profile td { padding: 7px 4px; border-bottom: 1px solid #e4eaf0; }
+.imu-saved-profile th:first-child, .imu-saved-profile td:first-child { text-align: left; }
+.imu-saved-profile small { font-size: 10px; color: #7b8895; }
+.imu-saved-profile p { font: 10px/1.7 "DM Mono", monospace; overflow-wrap: anywhere; }
+.imu-modal-footer { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e4eaf0; }
+.imu-wizard button:disabled { opacity: .45; cursor: not-allowed; }
+.attitude-reference-link { margin: 5px 0 0; background: #eef4ff; color: #386abf; border-radius: 8px; padding: 8px 12px; font-size: 11px; }
+.attitude-reference-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.attitude-reference-link:disabled { opacity: .45; cursor: not-allowed; }
+.imu-mount-caption { color: #455d78; font-size: 11px; line-height: 1.6; }
+.dark-mode .imu-mount-caption { color: #c1d4eb; }
+.attitude-card .axis { max-width: 170px; text-align: right; }
+.model-error { padding: 24px; color: #955321; font-size: 12px; }
+.dark-mode .imu-wizard { background: #1d252e; border-color: #3a4652; }
+.dark-mode .imu-wizard p, .dark-mode .imu-axis-select { color: #bdc9d5; }
+.dark-mode .imu-faces button { background: #273440; color: #d9e4ed; border-color: #445463; }
+.dark-mode .imu-faces button.complete { background: #1d4a3b; }
+.dark-mode .imu-message { background: #293a53; }
+.dark-mode .imu-saved-profile { border-color: #445463; }
+@media (max-width: 760px) { .imu-wizard-grid { grid-template-columns: 1fr; } }
