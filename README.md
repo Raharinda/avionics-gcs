@@ -54,7 +54,7 @@ Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust 
 | GitHub Actions (CI/CD)      | Rencana        |
 | Ground Control              | Rencana        |
 
-Firmware avionics menggunakan MPU6050 dan BMP280 pada satu bus I2C: SDA GPIO 21 (D21), SCL GPIO 22 (D22), dengan output Serial setiap 500 ms. Hal yang masih ditentukan nanti: sensor tambahan, sampling rate produksi, frekuensi kirim telemetry, skema database, pinout tambahan, dan mekanisme otorisasi kontrol.
+Firmware avionics menggunakan MPU6050 dan BMP280 pada satu bus I2C: SDA GPIO 21 (D21), SCL GPIO 22 (D22). Firmware `imu3d-v2` menargetkan pembacaan IMU 100 Hz, BMP280 2 Hz, dan JSON Serial 10 Hz. Kalibrasi enam pose dan acuan awal operator mendukung model 3D relatif di desktop; lihat [panduan dan logika orientasi](docs/imu-orientation.md). ESP-NOW, skema database, dan mekanisme otorisasi kontrol masih dalam pengembangan.
 
 ---
 
@@ -84,7 +84,7 @@ Lalu jalankan:
 
 ```bash
 git clone <repository-url>
-cd <nama-repo>/software/desktop
+cd <nama-repo>/software
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```

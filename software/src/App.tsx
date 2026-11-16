@@ -4,6 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { Icon } from "./components/Icon";
 import { RocketModel3D } from "./components/RocketModel3D";
+import { ImuCalibrationWizard } from "./components/ImuCalibrationWizard";
+import { useImuCalibration } from "./hooks/useImuCalibration";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
 import { useTelemetry, type SerialPortInfo } from "./hooks/useTelemetry";
@@ -27,9 +29,6 @@ function App() {
   const [isSerialHistoryOpen, setIsSerialHistoryOpen] = useState(false);
   const [serialView, setSerialView] = useState<"status" | "raw">("status");
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
-  const [isCalibrationStarted, setIsCalibrationStarted] = useState(false);
-  const [isCalibrationComplete, setIsCalibrationComplete] = useState(false);
-  const [hasCalibrated, setHasCalibrated] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
@@ -49,7 +48,12 @@ function App() {
     stopSerialListener,
     sendSerialCommand,
     listSerialPorts,
+    receivedAt,
   } = useTelemetry({ connected: connected && streamingSource === dataSource, dataSource });
+
+  const hardwareStreaming = connected && streamingSource === dataSource && dataSource !== DUMMY_SOURCE;
+  const imuCalibration = useImuCalibration(hardwareStreaming, dataSource, sendSerialCommand);
+  useEffect(() => { if (hardwareStreaming) setLog(imuCalibration.error ?? imuCalibration.message); }, [hardwareStreaming, imuCalibration.error, imuCalibration.message]);
 
   const refreshSerialPorts = async () => {
     try {
@@ -85,22 +89,7 @@ function App() {
         rawFrameLines.current = [];
       }
       setRawSerialHistory((history) => [...history.slice(-199), event.payload]);
-      if (event.payload === "CALIBRATION_STARTED") {
-        setIsCalibrationStarted(true);
-        setIsCalibrationComplete(false);
-        setLog("Calibration started — keep vehicle steady");
-      } else if (event.payload.startsWith("CALIBRATION_PROGRESS:")) {
-        setLog(`Calibration running — ${event.payload.split(":")[1]} samples`);
-      } else if (event.payload.startsWith("CALIBRATION_COMPLETE:")) {
-        setIsCalibrationStarted(true);
-        setIsCalibrationComplete(true);
-        setHasCalibrated(true);
-        setLog("Calibration complete — offsets saved to ESP32");
-      } else if (event.payload.startsWith("CALIBRATION_ERROR:")) {
-        setIsCalibrationStarted(false);
-        setIsCalibrationComplete(false);
-        setLog(`Calibration error — ${event.payload.slice("CALIBRATION_ERROR:".length)}`);
-      }
+
     }).then((cleanup) => {
       if (disposed) {
         cleanup();
@@ -129,9 +118,17 @@ function App() {
   const altitude =
     series.length > 0 ? series[series.length - 1].altitude : null;
   const latestTelemetry = series.length > 0 ? series[series.length - 1] : null;
-  const modelRoll = hasCalibrated && latestTelemetry ? latestTelemetry.roll : 0;
-  const modelPitch = hasCalibrated && latestTelemetry ? latestTelemetry.pitch : 0;
-  const modelYaw = hasCalibrated && latestTelemetry ? latestTelemetry.yaw : 0;
+  const simulated = dataSource === DUMMY_SOURCE;
+  const freshAttitude = receivedAt !== null && Date.now() - receivedAt < 1500;
+  const attitudeLive = simulated ? connected : hardwareStreaming && freshAttitude &&
+    !!imuCalibration.state?.referenceSet && !!latestTelemetry?.referenceSet && !!latestTelemetry.orientation;
+  const attitudeStatus = simulated ? "SIMULATION" : !hardwareStreaming ? "Start ESP32 telemetry"
+    : !imuCalibration.state ? "Firmware imu3d-v2 required"
+    : !imuCalibration.state.imuReady ? "IMU unavailable"
+    : !imuCalibration.state.calibrated ? "Calibrate six positions"
+    : !imuCalibration.state.referenceSet ? "Set your reference pose"
+    : !freshAttitude ? "No recent attitude data"
+    : !latestTelemetry?.referenceSet || !latestTelemetry.orientation ? "Waiting for referenced attitude" : "LIVE · relative to reference";
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
   const detectedUsbPorts = serialPorts.filter((port) => port.is_usb)
@@ -263,38 +260,6 @@ function App() {
           ? "SENDING"
           : "FIRED";
   const [isLogExpanded, setIsLogExpanded] = useState(false);
-  const startCalibration = async () => {
-    if (dataSource !== DUMMY_SOURCE) {
-      try {
-        await sendSerialCommand("CALIBRATE_START");
-      } catch (error) {
-        setLog(`Calibration error: ${error instanceof Error ? error.message : String(error)}`);
-        return;
-      }
-    }
-    setIsCalibrationStarted(true);
-    setIsCalibrationComplete(false);
-    setHasCalibrated(false);
-    setLog("Calibration started — keep vehicle steady");
-  };
-  const finishCalibration = async () => {
-    if (dataSource !== DUMMY_SOURCE) {
-      try {
-        await sendSerialCommand("CALIBRATE_FINISH");
-      } catch (error) {
-        setLog(`Calibration error: ${error instanceof Error ? error.message : String(error)}`);
-        return;
-      }
-    }
-    setIsCalibrationComplete(true);
-    setHasCalibrated(true);
-    setLog("Calibration complete — offsets saved");
-  };
-  const closeCalibration = () => {
-    setIsCalibrationOpen(false);
-    setIsCalibrationStarted(false);
-    setIsCalibrationComplete(false);
-  };
   const downloadTelemetryCsv = async () => {
     const header = "time,temperature,pressure,acceleration,gyroscope,altitude";
     const rows = series.map((point) =>
@@ -469,28 +434,29 @@ function App() {
               <div className="card-title-row">
                 <h2>Rocket view</h2>
                 <span className="axis">
-                  {hasCalibrated ? "CALIBRATED · Z ↑" : "Z ↑"}
+                  {attitudeStatus}
                 </span>
               </div>
               <div className="rocket-stage">
-                <div className="orbit orbit-one" />
-                <div className="orbit orbit-two" />
-                <RocketModel3D roll={modelRoll} pitch={modelPitch} yaw={modelYaw} />
+                <RocketModel3D active={attitudeLive} quaternion={simulated ? null : latestTelemetry?.orientation ?? null}
+                  roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0} />
               </div>
               <div className="attitude-values">
                 <div>
-                  <span>ROLL</span>
-                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
+                  <span>X ROTATION</span>
+                  <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
-                  <span>PITCH</span>
-                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.pitch.toFixed(1)}°` : "—"}</b>
+                  <span>Y ROTATION</span>
+                  <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.pitch.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
-                  <span>YAW</span>
-                  <b>{hasCalibrated && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
+                  <span>Z ROTATION</span>
+                  <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
                 </div>
               </div>
+              <p className="imu-note">{attitudeStatus}. Drag untuk memutar kamera, scroll untuk zoom. Acuan awal tidak memakai arah kompas.</p>
+              <button type="button" className="attitude-reference-link" onClick={() => setIsCalibrationOpen(true)}>Kalibrasi XYZ / tetapkan acuan</button>
             </article>
             <article className="card map-card">
               <div className="section-label">POSITION</div>
@@ -526,7 +492,7 @@ function App() {
             />
             <SensorCard
               title="Pressure"
-              value={latestTelemetry ? latestTelemetry.pressure.toFixed(2) : "—"}
+              value={latestTelemetry?.pressure != null ? latestTelemetry.pressure.toFixed(2) : "—"}
               unit="hPa"
               color="#252932"
               data={chartData}
@@ -707,89 +673,7 @@ function App() {
           </aside>
         </section>
       </div>
-      {isCalibrationOpen && (
-        <div
-          className="calibration-overlay"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeCalibration();
-          }}
-        >
-          <section
-            className="calibration-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="calibration-title"
-          >
-            <div className="calibration-modal-header">
-              <div>
-                <div className="section-label">SENSOR CALIBRATION</div>
-                <h2 id="calibration-title">Align vehicle sensors</h2>
-              </div>
-              <button
-                className="modal-close"
-                type="button"
-                onClick={closeCalibration}
-                aria-label="Close calibration"
-              >
-                ×
-              </button>
-            </div>
-            <div className="calibration-preview" aria-label="3D calibration model preview">
-              <div className="calibration-grid" />
-              <div className="calibration-model">
-                <div className="calibration-face face-front">IMU</div>
-                <div className="calibration-face face-back">IMU</div>
-                <div className="calibration-face face-right">X</div>
-                <div className="calibration-face face-left">−X</div>
-                <div className="calibration-face face-top">Z</div>
-                <div className="calibration-face face-bottom">−Z</div>
-              </div>
-              <span className="calibration-axis axis-x">X</span>
-              <span className="calibration-axis axis-y">Y</span>
-              <span className="calibration-axis axis-z">Z</span>
-            </div>
-            <div className="calibration-instructions">
-              <b>Calibration steps</b>
-              <ol>
-                <li>Place the vehicle in its normal flight position.</li>
-                <li>Click Start calibration and keep it completely still.</li>
-                <li>Wait 5–10 seconds, then click Calibration complete.</li>
-              </ol>
-              <small>
-                The status changes to “Calibration complete” when the ESP32 has
-                saved the sensor offsets.
-              </small>
-            </div>
-            <div className="calibration-status">
-              <span className={`calibration-indicator ${isCalibrationComplete ? "complete" : isCalibrationStarted ? "active" : ""}`} />
-              {isCalibrationComplete
-                ? "Calibration complete. Offsets saved."
-                : isCalibrationStarted
-                  ? "Calibration running. Keep the vehicle steady."
-                  : "Ready to calibrate accelerometer, gyroscope, and magnetometer."}
-            </div>
-            <div className="calibration-actions">
-              <button
-                className="calibration-start"
-                type="button"
-                onClick={startCalibration}
-                disabled={isCalibrationStarted && !isCalibrationComplete}
-              >
-                Start calibration
-              </button>
-              <button
-                className="calibration-finish"
-                type="button"
-                onClick={finishCalibration}
-                disabled={!isCalibrationStarted || isCalibrationComplete}
-              >
-                Calibration complete
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+      {isCalibrationOpen && <ImuCalibrationWizard controller={imuCalibration} connected={hardwareStreaming} onClose={() => setIsCalibrationOpen(false)} />}
       <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
         <div className="serial-log-heading">
           <span className="log-status">

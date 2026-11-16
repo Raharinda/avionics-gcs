@@ -18,8 +18,13 @@ export type SerialPortInfo = {
 export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
   const [series, setSeries] = useState<TelemetryPoint[]>([]);
   const [packetCount, setPacketCount] = useState(0);
+  const [receivedAt, setReceivedAt] = useState<number | null>(null);
+  const connection = useRef({ connected, dataSource });
+  connection.current = { connected, dataSource };
   const sourceState = useRef(new Map<string, { series: TelemetryPoint[]; packetCount: number }>());
   const activeSource = useRef(dataSource);
+
+  useEffect(() => { if (!connected) setReceivedAt(null); }, [connected]);
 
   useEffect(() => {
     if (activeSource.current !== dataSource) {
@@ -27,6 +32,7 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
       const saved = sourceState.current.get(dataSource);
       setSeries(saved?.series ?? []);
       setPacketCount(saved?.packetCount ?? 0);
+      setReceivedAt(null);
       return;
     }
     sourceState.current.set(dataSource, { series, packetCount });
@@ -35,6 +41,7 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (!connected || dataSource !== DUMMY_SOURCE) return;
+      setReceivedAt(Date.now());
       setPacketCount((count) => count + 1);
       setSeries((current) => {
         const lastTime = current.length > 0 ? current[current.length - 1].time : 0;
@@ -47,40 +54,35 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     listen<Omit<TelemetryPoint, "time">>("telemetry", (event) => {
       const payload = event.payload;
+      const current = connection.current;
+      if (!current.connected || current.dataSource === DUMMY_SOURCE ||
+          (payload.sourcePort && payload.sourcePort !== current.dataSource.split(" · ")[0])) return;
+      setReceivedAt(Date.now());
       setPacketCount((count) => count + 1);
       setSeries((current) => {
         const lastTime = current.length > 0 ? current[current.length - 1].time : 0;
-        return [...current.slice(-17), { ...payload, time: lastTime + 1 }];
+        return [...current.slice(-119), { ...payload, time: payload.timestampMs != null ? payload.timestampMs / 1000 : lastTime + 1 }];
       });
     }).then((cleanup) => {
-      unlisten = cleanup;
+      if (disposed) cleanup(); else unlisten = cleanup;
     });
-    return () => unlisten?.();
-  }, []);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    listen<string>("serial_line", (event) => {
-      if (event.payload.includes("{")) {
-        console.debug("Serial telemetry line:", event.payload);
-      }
-    }).then((cleanup) => {
-      unlisten = cleanup;
-    });
-    return () => unlisten?.();
+    return () => { disposed = true; unlisten?.(); };
   }, []);
 
   const loadDummyData = () => {
     setSeries(dummySeries);
     setPacketCount(28492);
+    setReceivedAt(Date.now());
     sourceState.current.set(dataSource, { series: dummySeries, packetCount: 28492 });
   };
 
   const clearTelemetry = () => {
     setSeries([]);
     setPacketCount(0);
+    setReceivedAt(null);
     sourceState.current.set(dataSource, { series: [], packetCount: 0 });
   };
 
@@ -105,5 +107,6 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
     stopSerialListener,
     sendSerialCommand,
     listSerialPorts,
+    receivedAt,
   };
 }

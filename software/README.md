@@ -1,7 +1,33 @@
-# Tauri + React + Typescript
+# Avionics GCS desktop
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Dashboard Tauri 2, React, TypeScript, dan Three.js. Akses USB Serial dilakukan
+oleh backend Rust. Jalankan dari direktori ini:
 
-## Recommended IDE Setup
+```bash
+pnpm install --frozen-lockfile
+pnpm tauri dev
+```
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Gunakan jendela aplikasi desktop untuk akses serial. Halaman Vite di browser
+biasa hanya menampilkan UI dan simulasi. Untuk Linux Debian/Kali, dependency
+native berikut diperlukan sebelum build desktop:
+
+```bash
+sudo apt install -y build-essential pkg-config libdbus-1-dev libudev-dev \
+  libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+  librsvg2-dev libxdo-dev libssl-dev
+```
+
+Deteksi USB menampilkan `Connected at PORT` sebelum Start, terpisah dari
+pilihan sumber data. Setelah Start, status menjadi `Streaming at PORT`
+atau `Streaming at Dummy Data` sesuai sumber yang sedang berjalan.
+
+Model 3D mengikuti quaternion dari firmware `imu3d-v2` setelah kalibrasi enam
+pose dan penetapan acuan awal. Profil disimpan pada ESP32. Ikuti
+[panduan kalibrasi, logika orientasi, dan protokol serial](../docs/imu-orientation.md).
+
+```bash
+pnpm test              # Validasi protokol kalibrasi
+pnpm build             # TypeScript dan bundle frontend
+pnpm tauri build       # Build aplikasi desktop distribusi
+```
