@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { FaceId, Quaternion } from "../types/imu";
+import { rocketAxes, type SensorMount } from "../data/rocketAxes";
 
 type Props = {
   roll?: number; pitch?: number; yaw?: number;
@@ -9,26 +10,39 @@ type Props = {
   active?: boolean;
   mode?: "rocket" | "sensor";
   sensorFace?: FaceId;
+  mounting?: SensorMount;
 };
 
 function axisLabel(text: string, color: string) {
   const canvas = document.createElement("canvas");
-  canvas.width = 192; canvas.height = 64;
   const context = canvas.getContext("2d")!;
-  context.fillStyle = color; context.font = "bold 34px sans-serif";
+  context.font = "bold 32px sans-serif";
+  canvas.width = Math.ceil(context.measureText(text).width) + 24; canvas.height = 64;
+  context.fillStyle = color; context.font = "bold 32px sans-serif";
   context.textAlign = "center"; context.textBaseline = "middle";
-  context.fillText(text, 96, 32);
+  context.fillText(text, canvas.width / 2, 32);
   const texture = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
-  sprite.scale.set(0.9, 0.3, 1);
+  sprite.scale.set(canvas.width / canvas.height * .28, .28, 1);
   return sprite;
 }
 
-export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null, active = true, mode = "rocket", sensorFace = "ZP" }: Props) {
+function disposeObjects(root: THREE.Object3D) {
+  const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+  root.traverse((object) => {
+    const drawable = object as THREE.Mesh;
+    if (drawable.geometry) geometries.add(drawable.geometry);
+    if (drawable.material) for (const material of Array.isArray(drawable.material) ? drawable.material : [drawable.material]) materials.add(material);
+  });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => { (material as THREE.SpriteMaterial).map?.dispose(); material.dispose(); });
+}
+
+export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null, active = true, mode = "rocket", sensorFace = "ZP", mounting }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const current = useRef({ roll, pitch, yaw, quaternion, active, sensorFace });
+  const current = useRef({ roll, pitch, yaw, quaternion, active, sensorFace, mounting });
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { current.current = { roll, pitch, yaw, quaternion, active, sensorFace }; }, [roll, pitch, yaw, quaternion, active, sensorFace]);
+  useEffect(() => { current.current = { roll, pitch, yaw, quaternion, active, sensorFace, mounting }; }, [roll, pitch, yaw, quaternion, active, sensorFace, mounting]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -70,12 +84,31 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
         fin.rotation.y = angle; fin.position.set(.33*Math.cos(angle), -.15, -.33*Math.sin(angle)); vehicle.add(fin);
       }
     }
-    const axes = new THREE.AxesHelper(1.75); vehicle.add(axes);
-    const labels = [["+X", "#dd483a", 2.0, 0, 0], [mode === "rocket" ? "+Y nose" : "+Y", "#228c53", 0, 2.0, 0], ["+Z", "#356ce0", 0, 0, 2.0]] as const;
-    for (const [text, color, x, y, z] of labels) { const label = axisLabel(text, color); label.position.set(x, y, z); vehicle.add(label); }
+    const axes = new THREE.Group(); vehicle.add(axes);
+    let axesKey = "";
+    const updateAxes = (mount?: SensorMount) => {
+      const key = mode === "sensor" ? "sensor" : `${mount?.noseAxis ?? "model"}:${mount?.rightAxis ?? "model"}`;
+      if (key === axesKey) return;
+      const changed = axesKey !== "";
+      axesKey = key;
+      disposeObjects(axes); axes.clear();
+      const definitions = mode === "sensor" ? [
+        { direction: [1,0,0] as const, label: "+X sensor", color: "#dd483a" },
+        { direction: [0,1,0] as const, label: "+Y sensor", color: "#228c53" },
+        { direction: [0,0,1] as const, label: "+Z sensor", color: "#356ce0" },
+      ] : rocketAxes(mount);
+      for (const definition of definitions) {
+        const direction = new THREE.Vector3(...definition.direction);
+        axes.add(new THREE.ArrowHelper(direction, new THREE.Vector3(), 1.75, definition.color));
+        const label = axisLabel(definition.label, definition.color);
+        label.position.copy(direction.multiplyScalar(2.05)); axes.add(label);
+      }
+      return changed;
+    };
+    updateAxes(current.current.mounting);
     const grid = new THREE.GridHelper(6, 12, "#a8b8c5", "#e2e8ee"); grid.position.y = -1.8; scene.add(grid);
     const up = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(-1.9,-1.6,0), 1.4, "#667988"); scene.add(up);
-    const upLabel = axisLabel(mode === "sensor" ? "UP" : "REF +Y", "#667988"); upLabel.position.set(-1.9, .1, 0); scene.add(upLabel);
+    const upLabel = axisLabel(mode === "sensor" ? "UP" : "ACUAN", "#667988"); upLabel.position.set(-1.9, .1, 0); scene.add(upLabel);
     scene.add(new THREE.HemisphereLight("#ffffff", "#a9b5bf", 2.5));
     const light = new THREE.DirectionalLight("#ffffff", 3); light.position.set(3,5,4); scene.add(light);
     const resize = () => {
@@ -88,6 +121,7 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
     const animate = (now: number) => {
       const dt = Math.min(.1, Math.max(0, (now-previous)/1000)); previous = now;
       const value = current.current;
+      if (updateAxes(value.mounting)) { target.identity(); vehicle.quaternion.identity(); }
       if (mode === "sensor") {
         const axis = new THREE.Vector3(value.sensorFace[0] === "X" ? 1 : 0, value.sensorFace[0] === "Y" ? 1 : 0, value.sensorFace[0] === "Z" ? 1 : 0);
         if (value.sensorFace[1] === "M") axis.negate();
@@ -105,14 +139,7 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
     frame = requestAnimationFrame(animate);
     return () => {
       cancelAnimationFrame(frame); observer.disconnect(); controls.dispose();
-      const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
-      scene.traverse((object) => {
-        const drawable = object as THREE.Mesh;
-        if (drawable.geometry) geometries.add(drawable.geometry);
-        if (drawable.material) for (const material of Array.isArray(drawable.material) ? drawable.material : [drawable.material]) materials.add(material);
-      });
-      geometries.forEach((geometry) => geometry.dispose());
-      materials.forEach((material) => { const mapped = material as THREE.SpriteMaterial; mapped.map?.dispose(); material.dispose(); });
+      disposeObjects(scene);
       renderer.dispose();
     };
   }, [mode]);

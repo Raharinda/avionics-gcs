@@ -35,6 +35,13 @@ tekanan udara. Arah utara dan posisi XYZ dalam meter tidak diukur.
    Gerakkan roket: model mengikuti rotasi relatif terhadap pose tadi.
    Drag pada model mengubah kamera; scroll mengubah zoom.
 
+Jika pose yang seharusnya tegak masih tampak sedikit miring, pegang roket tegak
+dan diam lalu klik **Luruskan pose sekarang** pada Rocket view. Koreksi titik
+nol dihitung dari quaternion yang sedang terukur dan disimpan sebagai acuan
+baru di ESP32. Ini menggantikan acuan X/Y/Z sebelumnya; bukan penambahan bias
+tetap pada pembacaan gyro atau accelerometer. ESP32 menolak permintaan jika
+sensor belum valid, belum dikalibrasi, atau masih mendeteksi gerakan besar.
+
 Data Dummy hanya menampilkan simulasi. Kalibrasi dan penyimpanan profil
 memerlukan koneksi ESP32 asli. Status live memerlukan data baru, profil valid,
 dan konfirmasi acuan aktif dari ESP32. Ketika data berhenti, model terakhir
@@ -105,9 +112,24 @@ q_model = q_mount × q_relative × inverse(q_mount)
 
 `q_mount` memetakan pemasangan sensor ke sumbu model: **X ke kanan, Y ke
 hidung**, dan Z mengikuti kaidah tangan kanan. Saat acuan baru ditetapkan,
-`q_relative` identitas sehingga model kembali ke pose nol. Label `REF +Y`
+`q_relative` identitas sehingga model kembali ke pose nol. Label `ACUAN`
 dan grid adalah kerangka acuan visual ini; keduanya bukan indikator arah
 gravitasi fisik apabila operator memilih pose awal miring.
+
+Sumbu yang digambar pada roket memakai label **sensor** sesuai pemasangan
+yang dikonfirmasi ESP32. Misalnya hidung +Z sensor dan kanan +X sensor:
+panah di hidung berlabel `+Z sensor · hidung` (biru), kanan `+X sensor · kanan`
+(merah), dan sumbu ketiga `−Y sensor` (hijau). Mesh Three.js secara internal
+tetap memanjang pada Y model; label sensor mengikuti transformasi pemasangan.
+Quaternion dari firmware sudah memakai koordinat model sehingga frontend
+tidak menerapkan transformasi pemasangan dua kali.
+
+Pilihan dropdown yang belum dikonfirmasi adalah rancangan pemasangan. Klik
+tombol acuan agar ESP32 menyimpan pemasangan dan menetapkan pose awal; model
+utama mengikuti nilai yang dibaca kembali dari ESP32. Sudut Euler di bawah
+model dilabeli kanan, hidung, dan sumbu ketiga beserta tanda sumbu sensornya.
+Dummy Data dan keadaan tanpa pemasangan terkonfirmasi memakai label sumbu
+model yang eksplisit.
 
 ESP32 mengirim quaternion model melalui USB Serial sekitar 10 Hz. Backend
 Rust memvalidasi quaternion, menambahkan asal port, lalu mengirim event ke

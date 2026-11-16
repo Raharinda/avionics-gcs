@@ -4,6 +4,7 @@ import type { useImuCalibration } from "../hooks/useImuCalibration";
 import { RocketModel3D } from "./RocketModel3D";
 import { calibrationHint } from "../data/calibrationHint";
 import type { TelemetryPoint } from "../types/telemetry";
+import { sensorAxisLabel } from "../data/rocketAxes";
 
 type Props = {
   controller: ReturnType<typeof useImuCalibration>;
@@ -72,8 +73,9 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, te
         <div>
           <h3>2. Pemasangan dan arah awal</h3>
           <p>Pilih sumbu sensor yang menuju hidung dan sisi kanan roket. Tanda ± mengikuti tulisan atau panah pada papan.</p>
-          <label className="imu-axis-select">Arah hidung roket<select value={nose} onChange={(e) => setNose(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis}>{axisLabel(axis)}</option>)}</select></label>
-          <label className="imu-axis-select">Arah sisi kanan<select value={right} onChange={(e) => setRight(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis} disabled={Math.abs(axis) === Math.abs(nose)}>{axisLabel(axis)}</option>)}</select></label>
+          <label className="imu-axis-select">Sumbu sensor ke hidung<select value={nose} onChange={(e) => setNose(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis}>{axisLabel(axis)}</option>)}</select></label>
+          <label className="imu-axis-select">Sumbu sensor ke kanan<select value={right} onChange={(e) => setRight(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis} disabled={Math.abs(axis) === Math.abs(nose)}>{axisLabel(axis)}</option>)}</select></label>
+          {mountValid && <p className="imu-mount-caption">Pilihan: {sensorAxisLabel(nose)} sensor → hidung; {sensorAxisLabel(right)} sensor → kanan. Label model mengikuti pemasangan setelah tombol acuan dikonfirmasi ESP32.</p>}
           {!mountValid && <p className="imu-error">Sumbu hidung dan kanan harus berbeda.</p>}
           <p>Setelah kalibrasi selesai, pegang roket pada pose awal yang kamu inginkan. Tahan diam lalu tetapkan acuan. Pose ini menjadi posisi nol model 3D.</p>
           <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active || !mountValid} onClick={() => void imu.setReference(nose, right)}>Tetapkan posisi sekarang sebagai acuan</button>

@@ -16,6 +16,8 @@ const { parseImuState, parseCalibrationProgress } = await import(moduleUrl(parse
 const hintJs = compile(await readFile(new URL('../src/data/calibrationHint.ts', import.meta.url), 'utf8'))
   .replace('"../types/imu"', JSON.stringify(typesUrl));
 const { calibrationHint } = await import(moduleUrl(hintJs));
+const axesJs = compile(await readFile(new URL('../src/data/rocketAxes.ts', import.meta.url), 'utf8'));
+const { rocketAxes, validSensorMount } = await import(moduleUrl(axesJs));
 const faces = ['XP', 'XM', 'YP', 'YM', 'ZP', 'ZM'];
 const state = () => ({
   firmware: 'imu3d-v2', calibrated: true, referenceSet: false, imuReady: true,
@@ -102,4 +104,43 @@ test('pose guidance distinguishes wrong sign, rotation, missing data, and old pr
   assert.match(calibrationHint('XP', null).message, /Menunggu telemetry baru/);
   assert.match(calibrationHint('XP', { ...reading, calibrated: true }).message, /dikoreksi profil lama/);
   assert.equal(calibrationHint('XP', { ...reading, imuValid: false }).tone, 'warning');
+});
+
+test('nose +Z and right +X show sensor axes on the confirmed model basis', () => {
+  const axes = rocketAxes({ noseAxis: 3, rightAxis: 1 });
+  assert.equal(axes[1].label, '+Z sensor · hidung');
+  assert.deepEqual(axes[1].direction, [0, 1, 0]);
+  assert.equal(axes[1].color, '#356ce0');
+  assert.equal(axes[0].label, '+X sensor · kanan');
+  assert.equal(axes[2].label, '−Y sensor');
+  assert.equal(axes[1].angleLabel, 'HIDUNG · +Z');
+  const changed = rocketAxes({ noseAxis: -1, rightAxis: 3 });
+  assert.equal(changed[1].label, '−X sensor · hidung');
+  assert.equal(changed[0].label, '+Z sensor · kanan');
+  // Selecting another mounting changes labels, not the telemetry quaternion basis.
+  assert.deepEqual(changed.map((axis) => axis.direction), axes.map((axis) => axis.direction));
+});
+
+test('all 24 valid signed mounting pairs label the same basis used by firmware', () => {
+  const vector = (axis) => [1, 2, 3].map((index) => Math.abs(axis) === index ? Math.sign(axis) : 0);
+  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  let combinations = 0;
+  for (const noseAxis of [-3,-2,-1,1,2,3]) for (const rightAxis of [-3,-2,-1,1,2,3]) {
+    if (Math.abs(noseAxis) === Math.abs(rightAxis)) continue;
+    ++combinations;
+    const right = vector(rightAxis), nose = vector(noseAxis);
+    const rows = [right, nose, cross(right, nose)];
+    const axes = rocketAxes({ noseAxis, rightAxis });
+    for (const axis of axes) {
+      const [, sign, name] = axis.label.match(/^([+−])([XYZ]) sensor/);
+      const sensorVector = vector(('XYZ'.indexOf(name) + 1) * (sign === '+' ? 1 : -1));
+      const modelVector = rows.map((row) => row.reduce((sum, n, i) => sum + n * sensorVector[i], 0));
+      assert.deepEqual(modelVector, axis.direction);
+    }
+  }
+  assert.equal(combinations, 24);
+  for (const mount of [undefined, { noseAxis: 3, rightAxis: -3 }, { noseAxis: 0, rightAxis: 1 }, { noseAxis: Infinity, rightAxis: 1 }]) {
+    assert.equal(validSensorMount(mount), false);
+    assert.match(rocketAxes(mount)[1].label, /model/);
+  }
 });

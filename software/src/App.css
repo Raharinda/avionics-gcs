@@ -169,6 +169,10 @@ button { cursor: pointer; border: 0; }
 .imu-modal-footer { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e4eaf0; }
 .imu-wizard button:disabled { opacity: .45; cursor: not-allowed; }
 .attitude-reference-link { margin: 5px 0 0; background: #eef4ff; color: #386abf; border-radius: 8px; padding: 8px 12px; font-size: 11px; }
+.attitude-reference-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.attitude-reference-link:disabled { opacity: .45; cursor: not-allowed; }
+.imu-mount-caption { color: #455d78; font-size: 11px; line-height: 1.6; }
+.dark-mode .imu-mount-caption { color: #c1d4eb; }
 .attitude-card .axis { max-width: 170px; text-align: right; }
 .model-error { padding: 24px; color: #955321; font-size: 12px; }
 .dark-mode .imu-wizard { background: #1d252e; border-color: #3a4652; }

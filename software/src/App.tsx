@@ -6,6 +6,7 @@ import { Icon } from "./components/Icon";
 import { RocketModel3D } from "./components/RocketModel3D";
 import { ImuCalibrationWizard } from "./components/ImuCalibrationWizard";
 import { useImuCalibration } from "./hooks/useImuCalibration";
+import { rocketAxes, sensorAxisLabel } from "./data/rocketAxes";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
 import { useTelemetry, type SerialPortInfo } from "./hooks/useTelemetry";
@@ -119,9 +120,14 @@ function App() {
     series.length > 0 ? series[series.length - 1].altitude : null;
   const latestTelemetry = series.length > 0 ? series[series.length - 1] : null;
   const simulated = dataSource === DUMMY_SOURCE;
+  const confirmedMount = !simulated && imuCalibration.state
+    ? { noseAxis: imuCalibration.state.noseAxis, rightAxis: imuCalibration.state.rightAxis } : undefined;
+  const displayedAxes = rocketAxes(confirmedMount);
   const freshAttitude = receivedAt !== null && Date.now() - receivedAt < 1500;
   const attitudeLive = simulated ? connected : hardwareStreaming && freshAttitude &&
     !!imuCalibration.state?.referenceSet && !!latestTelemetry?.referenceSet && !!latestTelemetry.orientation;
+  const canStraighten = hardwareStreaming && freshAttitude && !!imuCalibration.state?.calibrated &&
+    imuCalibration.state.imuReady && !imuCalibration.progress.active && !imuCalibration.pending;
   const attitudeStatus = simulated ? "SIMULATION" : !hardwareStreaming ? "Start ESP32 telemetry"
     : !imuCalibration.state ? "Firmware imu3d-v2 required"
     : !imuCalibration.state.imuReady ? "IMU unavailable"
@@ -438,25 +444,31 @@ function App() {
                 </span>
               </div>
               <div className="rocket-stage">
-                <RocketModel3D active={attitudeLive} quaternion={simulated ? null : latestTelemetry?.orientation ?? null}
+                <RocketModel3D active={attitudeLive} mounting={confirmedMount} quaternion={simulated ? null : latestTelemetry?.orientation ?? null}
                   roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0} />
               </div>
               <div className="attitude-values">
                 <div>
-                  <span>X ROTATION</span>
+                  <span>{displayedAxes[0].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
-                  <span>Y ROTATION</span>
+                  <span>{displayedAxes[1].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.pitch.toFixed(1)}°` : "—"}</b>
                 </div>
                 <div>
-                  <span>Z ROTATION</span>
+                  <span>{displayedAxes[2].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
                 </div>
               </div>
+              {confirmedMount && <p className="imu-mount-caption">Pemasangan terkonfirmasi: hidung {sensorAxisLabel(confirmedMount.noseAxis)} sensor · kanan {sensorAxisLabel(confirmedMount.rightAxis)} sensor.</p>}
               <p className="imu-note">{attitudeStatus}. Drag untuk memutar kamera, scroll untuk zoom. Acuan awal tidak memakai arah kompas.</p>
-              <button type="button" className="attitude-reference-link" onClick={() => setIsCalibrationOpen(true)}>Kalibrasi XYZ / tetapkan acuan</button>
+              <div className="attitude-reference-actions">
+                <button type="button" className="attitude-reference-link" onClick={() => setIsCalibrationOpen(true)}>Kalibrasi XYZ / tetapkan acuan</button>
+                {!simulated && <button type="button" className="attitude-reference-link" disabled={!canStraighten || !confirmedMount}
+                  onClick={() => { if (confirmedMount) void imuCalibration.setReference(confirmedMount.noseAxis, confirmedMount.rightAxis); }}>Luruskan pose sekarang</button>}
+              </div>
+              {!simulated && <p className="imu-note">Untuk koreksi kemiringan awal: pegang roket tegak dan diam, lalu klik Luruskan pose sekarang. Ini menggantikan acuan awal X/Y/Z di ESP32.</p>}
             </article>
             <article className="card map-card">
               <div className="section-label">POSITION</div>
