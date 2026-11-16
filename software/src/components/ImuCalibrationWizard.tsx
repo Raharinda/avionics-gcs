@@ -26,6 +26,7 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, te
   useEffect(() => { if (imu.progress.face) setSelectedFace(imu.progress.face); }, [imu.progress.face]);
   const disabled = !connected || imu.pending || !imu.state?.imuReady;
   const mountValid = Math.abs(nose) !== Math.abs(right);
+  const mountConfirmed = !!imu.state && nose === imu.state.noseAxis && right === imu.state.rightAxis;
   const reading = connected && telemetryFresh ? telemetry : null;
   const hint = calibrationHint(imu.progress.face ?? selectedFace, reading);
   return <div className="calibration-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -75,10 +76,20 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, te
           <p>Pilih sumbu sensor yang menuju hidung dan sisi kanan roket. Tanda ± mengikuti tulisan atau panah pada papan.</p>
           <label className="imu-axis-select">Sumbu sensor ke hidung<select value={nose} onChange={(e) => setNose(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis}>{axisLabel(axis)}</option>)}</select></label>
           <label className="imu-axis-select">Sumbu sensor ke kanan<select value={right} onChange={(e) => setRight(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis} disabled={Math.abs(axis) === Math.abs(nose)}>{axisLabel(axis)}</option>)}</select></label>
-          {mountValid && <p className="imu-mount-caption">Pilihan: {sensorAxisLabel(nose)} sensor → hidung; {sensorAxisLabel(right)} sensor → kanan. Label model mengikuti pemasangan setelah tombol acuan dikonfirmasi ESP32.</p>}
+          {mountValid && <>
+            <div className="imu-preview-title">PRATINJAU PEMASANGAN · SUMBU SENSOR TETAP</div>
+            <div className="imu-mount-preview"><RocketModel3D mode="mounting" mounting={{ noseAxis: nose, rightAxis: right }} /></div>
+            <p className="imu-mount-caption">Pilihan: hidung mengarah {sensorAxisLabel(nose)} sensor; kanan mengarah {sensorAxisLabel(right)} sensor. Pratinjau berubah langsung saat pilihan diganti.</p>
+          </>}
           {!mountValid && <p className="imu-error">Sumbu hidung dan kanan harus berbeda.</p>}
+          <button className="calibration-start imu-reference-button" type="button"
+            disabled={!connected || !imu.state || imu.pending || imu.progress.active || !mountValid || mountConfirmed}
+            onClick={() => void imu.applyMount(nose, right)}>Terapkan pemasangan ke ESP32</button>
+          <p className="imu-note">{mountConfirmed ? "✓ Pemasangan ini sudah dikonfirmasi ESP32." : "Pilihan belum diterapkan. Klik Terapkan pemasangan untuk menyimpannya."} Perubahan pemasangan membutuhkan acuan awal baru.</p>
+          <h3>3. Tetapkan pose nol untuk tampilan live</h3>
           <p>Setelah kalibrasi selesai, pegang roket pada pose awal yang kamu inginkan. Tahan diam lalu tetapkan acuan. Pose ini menjadi posisi nol model 3D.</p>
-          <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active || !mountValid} onClick={() => void imu.setReference(nose, right)}>Tetapkan posisi sekarang sebagai acuan</button>
+          <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active || !mountValid || !mountConfirmed} onClick={() => void imu.setReference(nose, right)}>Tetapkan posisi sekarang sebagai acuan</button>
+          <p className="imu-note">Tampilan live mengukur perubahan dari pose nol ini. Pilih tampilan Pemasangan sensor pada Rocket view untuk melihat hidung mengarah ke sumbu pilihanmu.</p>
           <p className="imu-reference-status">{imu.state?.referenceSet ? "✓ Acuan aktif pada sesi ini" : "Acuan sesi belum ditetapkan"}</p>
           <p className="imu-note">Profil dan catatan pose awal tersimpan setelah ESP32 mengonfirmasi. Setelah reboot, tetapkan acuan lagi. Yaw relatif dapat drift; arah kompas dan posisi XYZ dalam meter tidak diukur.</p>
           {imu.state?.profile && <div className="imu-saved-profile">

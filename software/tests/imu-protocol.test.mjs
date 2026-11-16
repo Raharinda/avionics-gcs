@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 
 // Exercise the shipped TypeScript parser with the project's existing compiler.
 // No browser, ESP32, generated fixture copy, or extra test dependency is needed.
@@ -17,7 +18,7 @@ const hintJs = compile(await readFile(new URL('../src/data/calibrationHint.ts', 
   .replace('"../types/imu"', JSON.stringify(typesUrl));
 const { calibrationHint } = await import(moduleUrl(hintJs));
 const axesJs = compile(await readFile(new URL('../src/data/rocketAxes.ts', import.meta.url), 'utf8'));
-const { rocketAxes, validSensorMount } = await import(moduleUrl(axesJs));
+const { rocketAxes, validSensorMount, sensorMountBasis } = await import(moduleUrl(axesJs));
 const faces = ['XP', 'XM', 'YP', 'YM', 'ZP', 'ZM'];
 const state = () => ({
   firmware: 'imu3d-v2', calibrated: true, referenceSet: false, imuReady: true,
@@ -143,4 +144,28 @@ test('all 24 valid signed mounting pairs label the same basis used by firmware',
     assert.equal(validSensorMount(mount), false);
     assert.match(rocketAxes(mount)[1].label, /model/);
   }
+});
+
+test('changing nose from +Z to +Y physically rotates the mounting preview', () => {
+  const preview = (mount) => {
+    const basis = sensorMountBasis(mount);
+    const matrix = new Matrix4().makeBasis(new Vector3(...basis.right), new Vector3(...basis.nose), new Vector3(...basis.third));
+    const rotation = new Quaternion().setFromRotationMatrix(matrix);
+    return new Vector3(0, 1, 0).applyQuaternion(rotation);
+  };
+  assert.ok(preview({ noseAxis: 3, rightAxis: 1 }).distanceTo(new Vector3(0, 0, 1)) < 1e-6);
+  assert.ok(preview({ noseAxis: 2, rightAxis: 1 }).distanceTo(new Vector3(0, 1, 0)) < 1e-6);
+});
+
+test('Three.js mounting preview aligns nose and right on all signed sensor axes', () => {
+  for (const noseAxis of [-3,-2,-1,1,2,3]) for (const rightAxis of [-3,-2,-1,1,2,3]) {
+    if (Math.abs(noseAxis) === Math.abs(rightAxis)) continue;
+    const basis = sensorMountBasis({ noseAxis, rightAxis });
+    const matrix = new Matrix4().makeBasis(new Vector3(...basis.right), new Vector3(...basis.nose), new Vector3(...basis.third));
+    assert.ok(Math.abs(matrix.determinant() - 1) < 1e-6);
+    const rotation = new Quaternion().setFromRotationMatrix(matrix);
+    assert.ok(new Vector3(0, 1, 0).applyQuaternion(rotation).distanceTo(new Vector3(...basis.nose)) < 1e-6);
+    assert.ok(new Vector3(1, 0, 0).applyQuaternion(rotation).distanceTo(new Vector3(...basis.right)) < 1e-6);
+  }
+  assert.equal(sensorMountBasis({ noseAxis: 2, rightAxis: -2 }), null);
 });

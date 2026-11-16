@@ -14,6 +14,15 @@ export function validSensorMount(mount?: SensorMount): mount is SensorMount {
   return !!mount && validAxis(mount.noseAxis) && validAxis(mount.rightAxis) && Math.abs(mount.noseAxis) !== Math.abs(mount.rightAxis);
 }
 
+// Columns of the model-to-sensor rotation, used by the fixed sensor-frame preview.
+export function sensorMountBasis(mount?: SensorMount): { right: Vector3; nose: Vector3; third: Vector3 } | null {
+  if (!validSensorMount(mount)) return null;
+  const unit = (axis: number): Vector3 => [1, 2, 3].map((index) => index === Math.abs(axis) ? Math.sign(axis) : 0) as Vector3;
+  const right = unit(mount.rightAxis), nose = unit(mount.noseAxis);
+  const third: Vector3 = [right[1] * nose[2] - right[2] * nose[1], right[2] * nose[0] - right[0] * nose[2], right[0] * nose[1] - right[1] * nose[0]];
+  return { right, nose, third };
+}
+
 // Firmware already sends a quaternion in model coordinates (X right, Y nose).
 // Only label that basis here; applying the mounting rotation again would be wrong.
 export function rocketAxes(mount?: SensorMount): RocketAxis[] {
@@ -23,9 +32,7 @@ export function rocketAxes(mount?: SensorMount): RocketAxis[] {
     { direction: directions[1], label: "+Y model · hidung", angleLabel: "Y MODEL", color: "#228c53" },
     { direction: directions[2], label: "+Z model", angleLabel: "Z MODEL", color: "#356ce0" },
   ];
-  const unit = (axis: number): Vector3 => [1, 2, 3].map((index) => index === Math.abs(axis) ? Math.sign(axis) : 0) as Vector3;
-  const right = unit(mount.rightAxis), nose = unit(mount.noseAxis);
-  const third = [right[1] * nose[2] - right[2] * nose[1], right[2] * nose[0] - right[0] * nose[2], right[0] * nose[1] - right[1] * nose[0]];
+  const { third } = sensorMountBasis(mount)!;
   const index = third.findIndex((value) => value !== 0);
   const signedThird = (index + 1) * third[index];
   const roles = ["kanan", "hidung", "sumbu ketiga"];

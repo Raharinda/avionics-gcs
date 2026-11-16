@@ -30,6 +30,9 @@ tekanan udara. Arah utara dan posisi XYZ dalam meter tidak diukur.
 6. Pilih sumbu sensor yang mengarah ke **hidung** dan **sisi kanan** roket.
    Contoh pemasangan awal: hidung +Z sensor, kanan +X sensor. Kedua sumbu
    harus tegak lurus. Pilihan ini menyesuaikan model dengan pemasangan papan.
+   Pratinjau langsung memutar roket di dalam kerangka sumbu sensor tetap:
+   hidung +Y mengarah ke panah +Y, hidung +Z ke panah +Z. Klik
+   **Terapkan pemasangan ke ESP32** untuk menyimpan pilihan tersebut.
 7. Pegang roket pada pose awal yang kamu inginkan, tahan diam, lalu klik
    **Tetapkan posisi sekarang sebagai acuan**. Pose tersebut menjadi nol 3D.
    Gerakkan roket: model mengikuti rotasi relatif terhadap pose tadi.
@@ -124,12 +127,24 @@ tetap memanjang pada Y model; label sensor mengikuti transformasi pemasangan.
 Quaternion dari firmware sudah memakai koordinat model sehingga frontend
 tidak menerapkan transformasi pemasangan dua kali.
 
-Pilihan dropdown yang belum dikonfirmasi adalah rancangan pemasangan. Klik
-tombol acuan agar ESP32 menyimpan pemasangan dan menetapkan pose awal; model
-utama mengikuti nilai yang dibaca kembali dari ESP32. Sudut Euler di bawah
-model dilabeli kanan, hidung, dan sumbu ketiga beserta tanda sumbu sensornya.
+Pilihan dropdown yang belum dikonfirmasi adalah rancangan pemasangan.
+Pratinjau di dialog langsung mengikuti pilihan ini. Tombol **Terapkan
+pemasangan ke ESP32** menyimpan sumbu tanpa menetapkan pose nol; perubahan
+sumbu membatalkan acuan aktif. Setelah ESP32 mengonfirmasi pemasangan,
+tetapkan pose awal melalui tombol acuan yang terpisah. Model utama mengikuti
+nilai yang dibaca kembali dari ESP32. Sudut Euler pada Orientasi live
+dilabeli kanan, hidung, dan sumbu ketiga beserta tanda sumbu sensornya.
 Dummy Data dan keadaan tanpa pemasangan terkonfirmasi memakai label sumbu
 model yang eksplisit.
+
+Rocket view menyediakan dua tampilan:
+
+- **Orientasi live** menampilkan rotasi relatif terhadap pose awal. Saat
+  menetapkan ulang acuan, pose awal kembali ke nol walaupun pemasangan berubah.
+- **Pemasangan sensor** mempertahankan X/Y/Z sensor di tempat dan memutar mesh
+  roket sesuai sumbu hidung/kanan yang tersimpan. Mengganti hidung dari +Z
+  menjadi +Y benar-benar mengubah arah roket pada pratinjau ini. Tampilan ini
+  menggambarkan pemasangan; gerakan perangkat dibaca di Orientasi live.
 
 ESP32 mengirim quaternion model melalui USB Serial sekitar 10 Hz. Backend
 Rust memvalidasi quaternion, menambahkan asal port, lalu mengirim event ke

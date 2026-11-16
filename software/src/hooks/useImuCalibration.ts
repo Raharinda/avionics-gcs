@@ -82,6 +82,7 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
     cancel: () => issue(["CALIBRATE_CANCEL"]),
     save: () => issue(["CALIBRATE_FINISH"]),
     refresh: () => issue(["IMU_STATUS"]),
+    applyMount: (nose: number, right: number) => issue([`IMU_MOUNT:${nose},${right}`]),
     setReference: (nose: number, right: number) => issue([`IMU_REFERENCE:${nose},${right}`]),
   };
 }

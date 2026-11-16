@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { FaceId, Quaternion } from "../types/imu";
-import { rocketAxes, type SensorMount } from "../data/rocketAxes";
+import { rocketAxes, sensorMountBasis, type SensorMount } from "../data/rocketAxes";
 
 type Props = {
   roll?: number; pitch?: number; yaw?: number;
   quaternion?: Quaternion | null;
   active?: boolean;
-  mode?: "rocket" | "sensor";
+  mode?: "rocket" | "sensor" | "mounting";
   sensorFace?: FaceId;
   mounting?: SensorMount;
 };
@@ -84,15 +84,16 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
         fin.rotation.y = angle; fin.position.set(.33*Math.cos(angle), -.15, -.33*Math.sin(angle)); vehicle.add(fin);
       }
     }
-    const axes = new THREE.Group(); vehicle.add(axes);
+    const axes = new THREE.Group();
+    if (mode === "mounting") scene.add(axes); else vehicle.add(axes);
     let axesKey = "";
     const updateAxes = (mount?: SensorMount) => {
-      const key = mode === "sensor" ? "sensor" : `${mount?.noseAxis ?? "model"}:${mount?.rightAxis ?? "model"}`;
+      const key = mode !== "rocket" ? mode : `${mount?.noseAxis ?? "model"}:${mount?.rightAxis ?? "model"}`;
       if (key === axesKey) return;
       const changed = axesKey !== "";
       axesKey = key;
       disposeObjects(axes); axes.clear();
-      const definitions = mode === "sensor" ? [
+      const definitions = mode !== "rocket" ? [
         { direction: [1,0,0] as const, label: "+X sensor", color: "#dd483a" },
         { direction: [0,1,0] as const, label: "+Y sensor", color: "#228c53" },
         { direction: [0,0,1] as const, label: "+Z sensor", color: "#356ce0" },
@@ -107,8 +108,10 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
     };
     updateAxes(current.current.mounting);
     const grid = new THREE.GridHelper(6, 12, "#a8b8c5", "#e2e8ee"); grid.position.y = -1.8; scene.add(grid);
-    const up = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(-1.9,-1.6,0), 1.4, "#667988"); scene.add(up);
-    const upLabel = axisLabel(mode === "sensor" ? "UP" : "ACUAN", "#667988"); upLabel.position.set(-1.9, .1, 0); scene.add(upLabel);
+    if (mode !== "mounting") {
+      const up = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(-1.9,-1.6,0), 1.4, "#667988"); scene.add(up);
+      const upLabel = axisLabel(mode === "sensor" ? "UP" : "ACUAN", "#667988"); upLabel.position.set(-1.9, .1, 0); scene.add(upLabel);
+    }
     scene.add(new THREE.HemisphereLight("#ffffff", "#a9b5bf", 2.5));
     const light = new THREE.DirectionalLight("#ffffff", 3); light.position.set(3,5,4); scene.add(light);
     const resize = () => {
@@ -118,11 +121,21 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
     const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
     let frame = 0, previous = performance.now();
     const target = new THREE.Quaternion();
+    const mountingMatrix = new THREE.Matrix4();
+    let previewKey = "";
     const animate = (now: number) => {
       const dt = Math.min(.1, Math.max(0, (now-previous)/1000)); previous = now;
       const value = current.current;
       if (updateAxes(value.mounting)) { target.identity(); vehicle.quaternion.identity(); }
-      if (mode === "sensor") {
+      if (mode === "mounting") {
+        const key = `${value.mounting?.noseAxis}:${value.mounting?.rightAxis}`;
+        if (key !== previewKey) {
+          previewKey = key;
+          const basis = sensorMountBasis(value.mounting);
+          if (basis) target.setFromRotationMatrix(mountingMatrix.makeBasis(new THREE.Vector3(...basis.right), new THREE.Vector3(...basis.nose), new THREE.Vector3(...basis.third)));
+          else target.identity();
+        }
+      } else if (mode === "sensor") {
         const axis = new THREE.Vector3(value.sensorFace[0] === "X" ? 1 : 0, value.sensorFace[0] === "Y" ? 1 : 0, value.sensorFace[0] === "Z" ? 1 : 0);
         if (value.sensorFace[1] === "M") axis.negate();
         target.setFromUnitVectors(axis, new THREE.Vector3(0,1,0));
@@ -132,7 +145,7 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
         target.setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(value.roll), THREE.MathUtils.degToRad(value.pitch), THREE.MathUtils.degToRad(value.yaw), "ZYX"));
       }
       vehicle.quaternion.slerp(target, Math.min(1, dt*18));
-      const opacity = value.active || mode === "sensor" ? 1 : .35;
+      const opacity = value.active || mode !== "rocket" ? 1 : .35;
       bodyMaterial.opacity = opacity; orange.opacity = opacity; dark.opacity = opacity;
       controls.update(); renderer.render(scene, camera); frame = requestAnimationFrame(animate);
     };
@@ -144,5 +157,5 @@ export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null,
     };
   }, [mode]);
   if (error) return <div className="model-error" role="alert">{error}</div>;
-  return <canvas ref={canvasRef} className="rocket-model-3d" aria-label={mode === "sensor" ? "Panduan posisi sensor 3D" : "Orientasi relatif roket 3D"} />;
+  return <canvas ref={canvasRef} className="rocket-model-3d" aria-label={mode === "sensor" ? "Panduan posisi sensor 3D" : mode === "mounting" ? "Pratinjau hidung roket pada sumbu sensor tetap" : "Orientasi relatif roket 3D"} />;
 }

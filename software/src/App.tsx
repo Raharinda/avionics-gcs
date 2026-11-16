@@ -30,6 +30,7 @@ function App() {
   const [isSerialHistoryOpen, setIsSerialHistoryOpen] = useState(false);
   const [serialView, setSerialView] = useState<"status" | "raw">("status");
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
+  const [preferredRocketView, setRocketView] = useState<"rocket" | "mounting">("rocket");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
@@ -122,6 +123,7 @@ function App() {
   const simulated = dataSource === DUMMY_SOURCE;
   const confirmedMount = !simulated && imuCalibration.state
     ? { noseAxis: imuCalibration.state.noseAxis, rightAxis: imuCalibration.state.rightAxis } : undefined;
+  const rocketView = confirmedMount ? preferredRocketView : "rocket";
   const displayedAxes = rocketAxes(confirmedMount);
   const freshAttitude = receivedAt !== null && Date.now() - receivedAt < 1500;
   const attitudeLive = simulated ? connected : hardwareStreaming && freshAttitude &&
@@ -440,14 +442,18 @@ function App() {
               <div className="card-title-row">
                 <h2>Rocket view</h2>
                 <span className="axis">
-                  {attitudeStatus}
+                  {rocketView === "mounting" ? "PRATINJAU PEMASANGAN" : attitudeStatus}
                 </span>
               </div>
+              <div className="rocket-view-tabs" role="group" aria-label="Tampilan roket">
+                <button type="button" aria-pressed={rocketView === "rocket"} onClick={() => setRocketView("rocket")}>Orientasi live</button>
+                <button type="button" aria-pressed={rocketView === "mounting"} disabled={!confirmedMount} onClick={() => setRocketView("mounting")}>Pemasangan sensor</button>
+              </div>
               <div className="rocket-stage">
-                <RocketModel3D active={attitudeLive} mounting={confirmedMount} quaternion={simulated ? null : latestTelemetry?.orientation ?? null}
+                <RocketModel3D mode={rocketView} active={attitudeLive} mounting={confirmedMount} quaternion={simulated ? null : latestTelemetry?.orientation ?? null}
                   roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0} />
               </div>
-              <div className="attitude-values">
+              {rocketView === "rocket" && <div className="attitude-values">
                 <div>
                   <span>{displayedAxes[0].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
@@ -460,15 +466,15 @@ function App() {
                   <span>{displayedAxes[2].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
                 </div>
-              </div>
+              </div>}
               {confirmedMount && <p className="imu-mount-caption">Pemasangan terkonfirmasi: hidung {sensorAxisLabel(confirmedMount.noseAxis)} sensor · kanan {sensorAxisLabel(confirmedMount.rightAxis)} sensor.</p>}
-              <p className="imu-note">{attitudeStatus}. Drag untuk memutar kamera, scroll untuk zoom. Acuan awal tidak memakai arah kompas.</p>
+              <p className="imu-note">{rocketView === "mounting" ? "Pratinjau pemasangan: X/Y/Z sensor tetap, hidung mengarah ke sumbu yang dipilih. Gerakan sensor ditampilkan di Orientasi live." : `${attitudeStatus}. Acuan awal tidak memakai arah kompas.`} Drag untuk memutar kamera, scroll untuk zoom.</p>
               <div className="attitude-reference-actions">
                 <button type="button" className="attitude-reference-link" onClick={() => setIsCalibrationOpen(true)}>Kalibrasi XYZ / tetapkan acuan</button>
-                {!simulated && <button type="button" className="attitude-reference-link" disabled={!canStraighten || !confirmedMount}
+                {!simulated && rocketView === "rocket" && <button type="button" className="attitude-reference-link" disabled={!canStraighten || !confirmedMount}
                   onClick={() => { if (confirmedMount) void imuCalibration.setReference(confirmedMount.noseAxis, confirmedMount.rightAxis); }}>Luruskan pose sekarang</button>}
               </div>
-              {!simulated && <p className="imu-note">Untuk koreksi kemiringan awal: pegang roket tegak dan diam, lalu klik Luruskan pose sekarang. Ini menggantikan acuan awal X/Y/Z di ESP32.</p>}
+              {!simulated && rocketView === "rocket" && <p className="imu-note">Untuk koreksi kemiringan awal: pegang roket tegak dan diam, lalu klik Luruskan pose sekarang. Ini menggantikan acuan awal X/Y/Z di ESP32.</p>}
             </article>
             <article className="card map-card">
               <div className="section-label">POSITION</div>
