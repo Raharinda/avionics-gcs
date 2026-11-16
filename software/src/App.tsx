@@ -673,7 +673,8 @@ function App() {
           </aside>
         </section>
       </div>
-      {isCalibrationOpen && <ImuCalibrationWizard controller={imuCalibration} connected={hardwareStreaming} onClose={() => setIsCalibrationOpen(false)} />}
+      {isCalibrationOpen && <ImuCalibrationWizard controller={imuCalibration} connected={hardwareStreaming}
+        telemetry={latestTelemetry} telemetryFresh={freshAttitude} onClose={() => setIsCalibrationOpen(false)} />}
       <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
         <div className="serial-log-heading">
           <span className="log-status">

@@ -13,6 +13,9 @@ const typesUrl = moduleUrl(compile(await readFile(new URL('../src/types/imu.ts',
 const parserJs = compile(await readFile(new URL('../src/data/imuProtocol.ts', import.meta.url), 'utf8'))
   .replace('"../types/imu"', JSON.stringify(typesUrl));
 const { parseImuState, parseCalibrationProgress } = await import(moduleUrl(parserJs));
+const hintJs = compile(await readFile(new URL('../src/data/calibrationHint.ts', import.meta.url), 'utf8'))
+  .replace('"../types/imu"', JSON.stringify(typesUrl));
+const { calibrationHint } = await import(moduleUrl(hintJs));
 const faces = ['XP', 'XM', 'YP', 'YM', 'ZP', 'ZM'];
 const state = () => ({
   firmware: 'imu3d-v2', calibrated: true, referenceSet: false, imuReady: true,
@@ -76,4 +79,27 @@ test('capture progress is accepted only within the declared sample window', () =
     { face: 'YX' }, { completed: ['XP', 'XP'] }]) {
     assert.equal(parseProgress({ ...valid, ...change }), null);
   }
+});
+
+test('reported stationary breadboard trace explains why +X stays at zero', () => {
+  const raw = { accelX: .66319, accelY: -.25857, accelZ: 9.22965,
+    gyroX: -.057289, gyroY: .030110, gyroZ: -.016254 };
+  const reading = { ...raw, calibrated: false, imuValid: true,
+    gyroscope: Math.hypot(raw.gyroX, raw.gyroY, raw.gyroZ) * 180 / Math.PI };
+  const wrongPose = calibrationHint('XP', reading);
+  assert.equal(wrongPose.tone, 'warning');
+  assert.match(wrongPose.message, /Terbaca \+Z ke atas/);
+  assert.match(wrongPose.message, /yang direkam \+X/);
+  assert.equal(calibrationHint('ZP', reading).tone, 'info');
+  // Positioning X upwards changes the guidance, never the ESP32 sample count.
+  assert.match(calibrationHint('XP', { ...reading, accelX: 9.23, accelZ: .66 }).message, /Posisi terukur sesuai \+X/);
+});
+
+test('pose guidance distinguishes wrong sign, rotation, missing data, and old profiles', () => {
+  const reading = { accelX: -9.8, accelY: 0, accelZ: 0, gyroscope: 0, calibrated: false };
+  assert.match(calibrationHint('XP', reading).message, /Terbaca −X/);
+  assert.match(calibrationHint('XM', { ...reading, gyroscope: 12 }).message, /gyro masih tinggi/);
+  assert.match(calibrationHint('XP', null).message, /Menunggu telemetry baru/);
+  assert.match(calibrationHint('XP', { ...reading, calibrated: true }).message, /dikoreksi profil lama/);
+  assert.equal(calibrationHint('XP', { ...reading, imuValid: false }).tone, 'warning');
 });

@@ -40,6 +40,20 @@ memerlukan koneksi ESP32 asli. Status live memerlukan data baru, profil valid,
 dan konfirmasi acuan aktif dari ESP32. Ketika data berhenti, model terakhir
 diredupkan dan angka orientasi ditampilkan sebagai `—`.
 
+### Jika hitungan tertahan di 0/200
+
+Diam saja belum cukup: sumbu yang diminta harus menghadap atas. Contohnya,
+`accelX ≈ 0,66`, `accelY ≈ −0,26`, `accelZ ≈ 9,23 m/s²` menunjukkan +Z
+ke atas. Data ini sesuai untuk pose +Z, tetapi ditolak bila merekam +X.
+Untuk +X, putar papan sampai panah +X tegak ke atas, lalu berhenti dan tahan
+diam selama perekaman. Putar ke pose berikutnya setelah pose ini selesai.
+
+Dialog menampilkan nilai XYZ, besar gyro, dan petunjuk seperti “Terbaca +Z
+ke atas, sedangkan yang direkam +X”. Petunjuk memakai telemetry yang masih
+baru; jumlah sampel dan hasil kalibrasi tetap berasal dari ESP32. Saat
+kalibrasi ulang, telemetry dapat sudah dikoreksi oleh profil lama, sedangkan
+perekaman menggunakan sampel mentah; dialog menjelaskan perbedaan ini.
+
 ## Logika perhitungan
 
 ### 1. Enam pose mengukur kesalahan sensor

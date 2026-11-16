@@ -135,6 +135,14 @@ button { cursor: pointer; border: 0; }
 .imu-wizard p { color: #667585; font-size: 12px; line-height: 1.65; }
 .imu-board-preview { height: 240px; border-radius: 14px; overflow: hidden; background: #f7f9fa; }
 .imu-board-preview .rocket-model-3d { width: 100%; height: 100%; }
+.imu-pose-feedback { margin-top: 12px; padding: 12px; border: 1px solid #cbdcf7; border-radius: 10px; background: #eef4ff; color: #314b69; font-size: 12px; }
+.imu-pose-feedback.warning { background: #fff4e8; border-color: #edc99b; color: #85501c; }
+.imu-pose-feedback p { margin: 7px 0; color: inherit; }
+.imu-live-values { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; font: 11px/1.6 "DM Mono", monospace; }
+.imu-pose-feedback small { font-size: 10px; line-height: 1.5; }
+.dark-mode .imu-pose-feedback { background: #263952; border-color: #425b78; color: #d5e5f8; }
+.dark-mode .imu-pose-feedback.warning { background: #493826; border-color: #765837; color: #f2d3ad; }
+.dark-mode .imu-pose-feedback p { color: inherit; }
 .imu-faces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
 .imu-faces button { display: flex; flex-direction: column; gap: 6px; padding: 12px 8px; border: 1px solid #dce3ea; border-radius: 9px; background: #f8fafc; color: #344454; font-size: 12px; }
 .imu-faces button.selected { border-color: #477ef2; box-shadow: 0 0 0 2px #477ef21c; }

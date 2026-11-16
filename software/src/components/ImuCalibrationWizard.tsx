@@ -2,16 +2,20 @@ import { useEffect, useState } from "react";
 import { FACES, faceLabel, type FaceId } from "../types/imu";
 import type { useImuCalibration } from "../hooks/useImuCalibration";
 import { RocketModel3D } from "./RocketModel3D";
+import { calibrationHint } from "../data/calibrationHint";
+import type { TelemetryPoint } from "../types/telemetry";
 
 type Props = {
   controller: ReturnType<typeof useImuCalibration>;
   connected: boolean;
+  telemetry: TelemetryPoint | null;
+  telemetryFresh: boolean;
   onClose: () => void;
 };
 const AXES = [1, -1, 2, -2, 3, -3];
 const axisLabel = (axis: number) => `${axis > 0 ? "+" : "−"}${"XYZ"[Math.abs(axis) - 1]}`;
 
-export function ImuCalibrationWizard({ controller: imu, connected, onClose }: Props) {
+export function ImuCalibrationWizard({ controller: imu, connected, telemetry, telemetryFresh, onClose }: Props) {
   const [selectedFace, setSelectedFace] = useState<FaceId>("XP");
   const [nose, setNose] = useState(3);
   const [right, setRight] = useState(1);
@@ -21,6 +25,8 @@ export function ImuCalibrationWizard({ controller: imu, connected, onClose }: Pr
   useEffect(() => { if (imu.progress.face) setSelectedFace(imu.progress.face); }, [imu.progress.face]);
   const disabled = !connected || imu.pending || !imu.state?.imuReady;
   const mountValid = Math.abs(nose) !== Math.abs(right);
+  const reading = connected && telemetryFresh ? telemetry : null;
+  const hint = calibrationHint(imu.progress.face ?? selectedFace, reading);
   return <div className="calibration-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="calibration-modal imu-wizard" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
       <div className="calibration-modal-header">
@@ -34,8 +40,17 @@ export function ImuCalibrationWizard({ controller: imu, connected, onClose }: Pr
       <div className="imu-wizard-grid">
         <div>
           <h3>1. Kalibrasi ±X, ±Y, ±Z</h3>
-          <p>Ikuti tanda sumbu pada <b>papan sensor</b>. Arahkan sumbu yang dipilih ke atas, lalu tahan diam sekitar 2 detik. Goyangan besar mengulang hitungan sampel.</p>
+          <p>Ikuti tanda sumbu pada <b>papan sensor</b>. Posisikan sumbu ke atas → klik Rekam → tahan diam sekitar 2 detik. Putar ke posisi berikutnya setelah pose selesai. Goyangan besar mengulang hitungan sampel.</p>
           <div className="imu-board-preview"><RocketModel3D mode="sensor" sensorFace={selectedFace} /></div>
+          {connected && <div className={`imu-pose-feedback ${hint.tone}`} role="status">
+            <b>{imu.progress.face ? `Sedang merekam ${faceLabel(imu.progress.face)}` : `Panduan ${faceLabel(selectedFace)} ke atas`}</b>
+            <p>{hint.message}</p>
+            {reading && <div className="imu-live-values">
+              <span>X {reading.accelX.toFixed(2)}</span><span>Y {reading.accelY.toFixed(2)}</span><span>Z {reading.accelZ.toFixed(2)} m/s²</span>
+              <span>Gyro {reading.gyroscope.toFixed(2)} °/s</span>
+            </div>}
+            <small>Petunjuk dari telemetry terkini. Progres dan penyimpanan dikonfirmasi ESP32.</small>
+          </div>}
           <div className="imu-faces">
             {FACES.map((face) => <button key={face} type="button" className={`${selectedFace === face ? "selected" : ""} ${imu.progress.completed.includes(face) ? "complete" : ""}`}
               disabled={imu.pending || imu.progress.face !== null} onClick={() => setSelectedFace(face)}>
