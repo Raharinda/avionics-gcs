@@ -1,7 +1,11 @@
 # Avionics GCS desktop
 
 Dashboard Tauri 2, React, TypeScript, dan Three.js. Akses USB Serial dilakukan
-oleh backend Rust. Jalankan dari direktori ini:
+oleh backend Rust.
+
+Struktur komponen dan aliran data dijelaskan di [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Jalankan dari direktori ini:
 
 ```bash
 pnpm install --frozen-lockfile
