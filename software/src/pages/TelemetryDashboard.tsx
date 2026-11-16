@@ -56,12 +56,13 @@ export function TelemetryDashboard() {
                     calibrationActive={imuCalibration.progress.active}
                     calibrationPending={imuCalibration.pending}
                     paused={isCalibrationOpen}
+                    darkMode={isDarkMode}
                     onOpenCalibration={openCalibration}
                     onSetReference={imuCalibration.setReference}
                 />
             }
             map={<MapPanel hasTelemetry={telemetry.series.length > 0} />}
-            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} />}
+            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} darkMode={isDarkMode} />}
             commands={
                 <CommandPanel
                     commandState={dashboard.commandState}

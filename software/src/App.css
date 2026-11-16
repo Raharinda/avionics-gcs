@@ -185,9 +185,26 @@ button { cursor: pointer; border: 0; }
 .attitude-card .axis { max-width: 170px; text-align: right; }
 .model-error { padding: 24px; color: #955321; font-size: 12px; }
 .dark-mode .imu-wizard { background: #1d252e; border-color: #3a4652; }
+.dark-mode .imu-wizard h3 { color: #eef3f7; }
 .dark-mode .imu-wizard p, .dark-mode .imu-axis-select { color: #bdc9d5; }
+.dark-mode .imu-board-preview, .dark-mode .imu-mount-preview { background: #252d35; }
+.dark-mode .imu-preview-title { color: #aebdca; }
 .dark-mode .imu-faces button { background: #273440; color: #d9e4ed; border-color: #445463; }
 .dark-mode .imu-faces button.complete { background: #1d4a3b; }
+.dark-mode .imu-faces button.selected { border-color: #78a5ff; box-shadow: 0 0 0 2px #78a5ff30; }
+.dark-mode .imu-faces small { color: #aebdca; }
+.dark-mode .imu-actions button, .dark-mode .imu-modal-footer button { background: #303b47; color: #d9e4ed; }
+.dark-mode .imu-actions .calibration-start, .dark-mode .imu-reference-button { background: #477ef2; color: #fff; }
+.dark-mode .imu-axis-select select { border-color: #465564; background: #273440; color: #e2eaf1; }
+.dark-mode .imu-axis-select select option { background: #273440; color: #e2eaf1; }
+.dark-mode .imu-progress label { color: #8eb3ff; }
+.dark-mode .imu-note { color: #9daab6; }
+.dark-mode .imu-error, .dark-mode .imu-warning { background: #493426; color: #f2c7a2 !important; }
 .dark-mode .imu-message { background: #293a53; }
+.dark-mode .imu-reference-status { color: #53d698 !important; }
 .dark-mode .imu-saved-profile { border-color: #445463; }
+.dark-mode .imu-saved-profile th, .dark-mode .imu-saved-profile td { border-color: #384653; color: #d4dee7; }
+.dark-mode .imu-saved-profile small { color: #9daab6; }
+.dark-mode .imu-modal-footer { border-color: #384653; }
+.dark-mode .attitude-reference-link { background: #293a53; color: #a9c6ff; }
 @media (max-width: 760px) { .imu-wizard-grid { grid-template-columns: 1fr; } }
