@@ -11,7 +11,8 @@ type UseTelemetryOptions = {
 
 export type SerialPortInfo = {
   name: string;
-  description?: string;
+  description?: string | null;
+  is_usb: boolean;
 };
 
 export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {

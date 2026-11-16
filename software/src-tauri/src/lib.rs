@@ -16,6 +16,7 @@ struct SerialState {
 struct SerialPortInfo {
     name: String,
     description: Option<String>,
+    is_usb: bool,
 }
 
 #[derive(Deserialize)]
@@ -171,15 +172,18 @@ fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
         .map(|ports| {
             ports
                 .into_iter()
-                .map(|port| SerialPortInfo {
-                    name: port.port_name,
-                    description: match port.port_type {
+                .map(|port| {
+                    let (description, is_usb) = match port.port_type {
                         serialport::SerialPortType::UsbPort(info) => {
-                            info.product.or(info.manufacturer)
+                            (info.product.or(info.manufacturer), true)
                         }
-                        serialport::SerialPortType::BluetoothPort { .. } => None,
-                        _ => None,
-                    },
+                        _ => (None, false),
+                    };
+                    SerialPortInfo {
+                        name: port.port_name,
+                        description,
+                        is_usb,
+                    }
                 })
                 .collect()
         })

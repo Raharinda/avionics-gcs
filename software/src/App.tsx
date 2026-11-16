@@ -6,7 +6,7 @@ import { Icon } from "./components/Icon";
 import { RocketModel3D } from "./components/RocketModel3D";
 import { SensorCard } from "./components/SensorCard";
 import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "./data/dummyTelemetry";
-import { useTelemetry } from "./hooks/useTelemetry";
+import { useTelemetry, type SerialPortInfo } from "./hooks/useTelemetry";
 import type { CommandState, Phase } from "./types/telemetry";
 import "./App.css";
 
@@ -14,10 +14,9 @@ function App() {
   const [phase, setPhase] = useState<Phase>("Initialization");
   const [connected, setConnected] = useState(false);
   const [portConnected, setPortConnected] = useState(false);
+  const [streamingSource, setStreamingSource] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState(DEFAULT_DATA_SOURCE);
-  const [serialPorts, setSerialPorts] = useState<
-    { name: string; description?: string }[]
-  >([]);
+  const [serialPorts, setSerialPorts] = useState<SerialPortInfo[]>([]);
   const [commandState, setCommandState] = useState<CommandState>("safe");
   const [log, setLog] = useState("No telemetry data received");
   const [rawSerialLine, setRawSerialLine] = useState("");
@@ -35,8 +34,6 @@ function App() {
   const [utcNow, setUtcNow] = useState(() => new Date());
   const sourceState = useRef(
     new Map<string, {
-      connected: boolean;
-      portConnected: boolean;
       commandState: CommandState;
       phase: Phase;
       log: string;
@@ -52,7 +49,7 @@ function App() {
     stopSerialListener,
     sendSerialCommand,
     listSerialPorts,
-  } = useTelemetry({ connected, dataSource });
+  } = useTelemetry({ connected: connected && streamingSource === dataSource, dataSource });
 
   const refreshSerialPorts = async () => {
     try {
@@ -137,14 +134,18 @@ function App() {
   const modelYaw = hasCalibrated && latestTelemetry ? latestTelemetry.yaw : 0;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
-  const selectedPortName = dataSource.split(" · ")[0];
-  const detectedPort = dataSource === DUMMY_SOURCE
-    ? undefined
-    : serialPorts.find((port) => port.name === selectedPortName);
-  const portStatusLabel = dataSource === DUMMY_SOURCE
-    ? "Dummy data"
-    : detectedPort ? `Connected at ${detectedPort.name}` : "Port disconnected";
-  const streamIsActive = connected && (dataSource === DUMMY_SOURCE || detectedPort !== undefined);
+  const detectedUsbPorts = serialPorts.filter((port) => port.is_usb)
+    .map((port) => port.name).sort();
+  const hardwareStatusLabel = detectedUsbPorts.length > 0
+    ? `Connected at ${detectedUsbPorts.join(", ")}` : "Port disconnected";
+  const streamIsActive = streamingSource !== null && (
+    streamingSource === DUMMY_SOURCE ||
+    serialPorts.some((port) => port.name === streamingSource.split(" · ")[0])
+  );
+  const streamLabel = streamingSource === DUMMY_SOURCE
+    ? "Dummy Data" : streamingSource?.split(" · ")[0];
+  const portStatusLabel = streamIsActive
+    ? `Streaming at ${streamLabel}` : hardwareStatusLabel;
   const sourceAvailable =
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
   const connectionReady =
@@ -155,23 +156,21 @@ function App() {
       activeSource.current = dataSource;
       const saved = sourceState.current.get(dataSource);
       if (!saved) return;
-      setConnected(saved.connected);
-      setPortConnected(saved.portConnected);
       setCommandState(saved.commandState);
       setPhase(saved.phase);
       setLog(saved.log);
       return;
     }
     sourceState.current.set(dataSource, {
-      connected,
-      portConnected,
       commandState,
       phase,
       log,
     });
-  }, [commandState, connected, dataSource, log, phase, portConnected]);
+  }, [commandState, dataSource, log, phase]);
   const clearTelemetry = () => {
     setConnected(false);
+    setPortConnected(false);
+    setStreamingSource(null);
     clearTelemetryData();
     latestRawSerialLine.current = "";
     rawFrameLines.current = [];
@@ -189,15 +188,24 @@ function App() {
   };
 
   const selectDataSource = async (source: string) => {
-    if (dataSource !== DUMMY_SOURCE) {
-      await stopSerialListener();
+    if (source === dataSource) return;
+    try {
+      if (dataSource !== DUMMY_SOURCE) {
+        await stopSerialListener();
+      }
+      setConnected(false);
+      setPortConnected(false);
+      setStreamingSource(null);
+      setDataSource(source);
+    } catch (error) {
+      setLog(`Serial error: ${error instanceof Error ? error.message : String(error)}`);
     }
-    setDataSource(source);
   };
 
   const startTelemetry = async () => {
     if (dataSource === DUMMY_SOURCE) {
       loadDummyData();
+      setStreamingSource(DUMMY_SOURCE);
       setConnected(true);
       setLog("14:32:09.021  DUMMY RX alt: 1244.9, vel: -18.6, packet: 28492");
       return;
@@ -207,10 +215,12 @@ function App() {
       const message = await startSerialListener(portName);
       setPortConnected(true);
       setConnected(true);
+      setStreamingSource(dataSource);
       setLog(`${message} — waiting for JSON telemetry`);
     } catch (error) {
       setPortConnected(false);
       setConnected(false);
+      setStreamingSource(null);
       setLog(`Serial error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
@@ -334,10 +344,10 @@ function App() {
           <div className="brand-mark">G</div>
           <strong>AVIONICS GCS</strong>
           <span className="connection-pill" role="status" aria-live="polite"
-            title={detectedPort
-              ? `${detectedPort.description ?? "Serial device"} detected. Start/Stop controls the telemetry stream.`
-              : dataSource === DUMMY_SOURCE ? "Simulated telemetry source" : "Selected Serial port is not detected"}>
-            <i className={detectedPort ? "connected" : ""} />
+            title={streamIsActive
+              ? `Telemetry streaming from ${streamLabel}. ${hardwareStatusLabel}`
+              : `${hardwareStatusLabel}. Press Start to stream the selected data source.`}>
+            <i className={detectedUsbPorts.length > 0 || streamIsActive ? "connected" : ""} />
             <span className="connection-copy">
               <span className="connection-port">{portStatusLabel}</span>
               <small>{streamIsActive ? "Streaming" : "Not streaming"}</small>
@@ -827,8 +837,8 @@ function App() {
               ? rawSerialLine || "No raw serial data received"
               : `${log}
 Telemetry source: ${dataSource}
-Port: ${portStatusLabel}
-Listening: ${streamIsActive ? "active" : "stopped"}`}
+Port: ${hardwareStatusLabel}
+Listening: ${streamIsActive ? `active at ${streamLabel}` : "stopped"}`}
           </pre>
         )}
         <button
