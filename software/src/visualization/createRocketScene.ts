@@ -34,10 +34,11 @@ function disposeSceneResources(root: THREE.Object3D, extraMaterials: THREE.Mater
 }
 export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketSceneState) {
     const mode = initial.mode;
+    const darkMode = initial.darkMode || canvas.closest(".dark-mode") !== null;
     let sceneState = initial;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#f7f9fa");
+    scene.background = new THREE.Color(darkMode ? "#252d35" : "#f7f9fa");
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(3.5, 2.6, 5.5);
     const controls = new OrbitControls(camera, canvas);
@@ -50,16 +51,16 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     const vehicle = new THREE.Group();
     scene.add(vehicle);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ color: "#dfe7ed", metalness: .55, roughness: .35, transparent: true });
-    const accentMaterial = new THREE.MeshStandardMaterial({ color: "#f15b3a", roughness: .5, transparent: true });
-    const detailMaterial = new THREE.MeshStandardMaterial({ color: "#59636e", metalness: .6, roughness: .3, transparent: true });
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#a4adb5" : "#dfe7ed", metalness: .55, roughness: .35, transparent: true });
+    const accentMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#7f8992" : "#f15b3a", roughness: .5, transparent: true });
+    const detailMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#525d66" : "#59636e", metalness: .6, roughness: .3, transparent: true });
     if (mode === "sensor") {
-        const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, .12), new THREE.MeshStandardMaterial({ color: "#176d57", roughness: .7 }));
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, .12), new THREE.MeshStandardMaterial({ color: darkMode ? "#7c858d" : "#176d57", roughness: .7 }));
         vehicle.add(board);
         const chip = new THREE.Mesh(new THREE.BoxGeometry(.42, .42, .13), detailMaterial);
         chip.position.z = .1;
         vehicle.add(chip);
-        const label = createAxisLabel("MPU6050", "#233a4f");
+        const label = createAxisLabel("MPU6050", darkMode ? "#d7dde2" : "#233a4f");
         label.position.set(0, -.75, .15);
         vehicle.add(label);
     }
@@ -112,13 +113,13 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
         return changed;
     };
     updateAxes(sceneState.mounting);
-    const grid = new THREE.GridHelper(6, 12, "#a8b8c5", "#e2e8ee");
+    const grid = new THREE.GridHelper(6, 12, darkMode ? "#5b6670" : "#a8b8c5", darkMode ? "#39444d" : "#e2e8ee");
     grid.position.y = -1.8;
     scene.add(grid);
     if (mode !== "mounting") {
-        const up = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1.9, -1.6, 0), 1.4, "#667988");
+        const up = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1.9, -1.6, 0), 1.4, darkMode ? "#aeb8c2" : "#667988");
         scene.add(up);
-        const upLabel = createAxisLabel(mode === "sensor" ? "UP" : "ACUAN", "#667988");
+        const upLabel = createAxisLabel(mode === "sensor" ? "UP" : "ACUAN", darkMode ? "#aeb8c2" : "#667988");
         upLabel.position.set(-1.9, .1, 0);
         scene.add(upLabel);
     }

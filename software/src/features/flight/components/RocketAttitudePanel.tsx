@@ -14,11 +14,12 @@ type Props = {
     calibrationActive: boolean;
     calibrationPending: boolean;
     paused: boolean;
+    darkMode: boolean;
     onOpenCalibration: () => void;
     onSetReference: (nose: number, right: number) => Promise<void>;
 };
 export const RocketAttitudePanel = memo(function RocketAttitudePanel(props: Props) {
-    const { latestTelemetry, receivedAt, simulated, connected, hardwareStreaming, imuState, calibrationActive, calibrationPending, paused, onOpenCalibration, onSetReference } = props;
+    const { latestTelemetry, receivedAt, simulated, connected, hardwareStreaming, imuState, calibrationActive, calibrationPending, paused, darkMode, onOpenCalibration, onSetReference } = props;
     const [preferredRocketView, setRocketView] = useState<"rocket" | "mounting">("rocket");
     const confirmedMount = !simulated && imuState
         ? { noseAxis: imuState.noseAxis, rightAxis: imuState.rightAxis } : undefined;
@@ -49,7 +50,7 @@ export const RocketAttitudePanel = memo(function RocketAttitudePanel(props: Prop
                 <button type="button" aria-pressed={rocketView === "mounting"} disabled={!confirmedMount} onClick={() => setRocketView("mounting")}>Pemasangan sensor</button>
               </div>
               <div className="rocket-stage">
-                <RocketViewport mode={rocketView} active={attitudeLive} mounting={confirmedMount} paused={paused} quaternion={simulated ? null : latestTelemetry?.orientation ?? null} roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0}/>
+                <RocketViewport mode={rocketView} active={attitudeLive} mounting={confirmedMount} paused={paused} darkMode={darkMode} quaternion={simulated ? null : latestTelemetry?.orientation ?? null} roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0}/>
               </div>
               {rocketView === "rocket" && <div className="attitude-values">
                 <div>
