@@ -1,9 +1,9 @@
 import { memo } from "react";
-import { Icon } from "../atoms/Icon";
-import { LaptopClock } from "../molecules/LaptopClock";
-import { DUMMY_SOURCE } from "../../data/dummyTelemetry";
-import type { SerialPortInfo } from "../../types/serial";
-import type { Phase } from "../../types/telemetry";
+import { Icon } from "../../../components/ui/Icon";
+import { LaptopClock } from "./LaptopClock";
+import { DUMMY_SOURCE } from "../../../data/dummyTelemetry";
+import type { SerialPortInfo } from "../../../types/serial";
+import type { Phase } from "../../../types/telemetry";
 type Props = {
     phase: Phase;
     dataSource: string;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "../data/dummyTelemetry";
-import { listSerialPorts, startSerialListener, stopSerialListener } from "../services/serialConnection";
-import type { SerialPortInfo } from "../types/serial";
+import { DEFAULT_DATA_SOURCE, DUMMY_SOURCE } from "../../../data/dummyTelemetry";
+import { listSerialPorts, startSerialListener, stopSerialListener } from "../../../services/serialConnection";
+import type { SerialPortInfo } from "../../../types/serial";
 export function useSerialConnection(setLog: (message: string) => void) {
     const [connected, setConnected] = useState(false);
     const [portConnected, setPortConnected] = useState(false);

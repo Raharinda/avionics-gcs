@@ -1,15 +1,15 @@
 import { lazy, Suspense, useCallback, useState } from "react";
-import { DashboardLayout } from "../components/templates/DashboardLayout";
-import { DashboardHeader } from "../components/organisms/DashboardHeader";
-import { TelemetryMetrics } from "../components/organisms/TelemetryMetrics";
-import { RocketAttitudePanel } from "../components/organisms/RocketAttitudePanel";
-import { MapPanel } from "../components/organisms/MapPanel";
-import { TelemetrySensorGrid } from "../components/organisms/TelemetrySensorGrid";
-import { CommandPanel } from "../components/organisms/CommandPanel";
-import { SerialLogPanel } from "../components/organisms/SerialLogPanel";
-import { useDashboardController } from "../hooks/useDashboardController";
+import { DashboardLayout } from "../features/dashboard/components/DashboardLayout";
+import { DashboardHeader } from "../features/dashboard/components/DashboardHeader";
+import { TelemetryMetrics } from "../features/telemetry/components/TelemetryMetrics";
+import { RocketAttitudePanel } from "../features/flight/components/RocketAttitudePanel";
+import { MapPanel } from "../features/navigation/components/MapPanel";
+import { TelemetrySensorGrid } from "../features/telemetry/components/TelemetrySensorGrid";
+import { CommandPanel } from "../features/command/components/CommandPanel";
+import { SerialLogPanel } from "../features/connection/components/SerialLogPanel";
+import { useDashboardController } from "../features/dashboard/hooks/useDashboardController";
 import { DUMMY_SOURCE } from "../data/dummyTelemetry";
-const ImuCalibrationWizard = lazy(() => import("../components/organisms/ImuCalibrationWizard").then((module) => ({ default: module.ImuCalibrationWizard })));
+const ImuCalibrationWizard = lazy(() => import("../features/calibration/components/ImuCalibrationWizard").then((module) => ({ default: module.ImuCalibrationWizard })));
 export function TelemetryDashboard() {
     const dashboard = useDashboardController();
     const { connection, telemetry, imuCalibration, latestTelemetry } = dashboard;

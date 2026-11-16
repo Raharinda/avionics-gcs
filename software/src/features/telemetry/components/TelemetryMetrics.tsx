@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { MetricCard } from "../molecules/MetricCard";
+import { MetricCard } from "./MetricCard";
 export const TelemetryMetrics = memo(function TelemetryMetrics({ altitude, packetCount, hasTelemetry }: {
     altitude: number | null;
     packetCount: number;

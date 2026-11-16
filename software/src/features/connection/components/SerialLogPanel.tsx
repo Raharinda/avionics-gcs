@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
-import { Icon } from "../atoms/Icon";
-import { useSerialLog } from "../../hooks/useSerialLog";
+import { Icon } from "../../../components/ui/Icon";
+import { useSerialLog } from "../hooks/useSerialLog";
 type Props = {
     log: string;
     dataSource: string;

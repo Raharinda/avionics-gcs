@@ -1,6 +1,7 @@
 import { memo } from "react";
-import { Icon } from "../atoms/Icon";
-import type { CommandState } from "../../types/telemetry";
+import { Icon } from "../../../components/ui/Icon";
+import type { CommandState } from "../../../types/telemetry";
+
 type Props = {
     commandState: CommandState;
     connectionReady: boolean;
@@ -14,6 +15,7 @@ type Props = {
     onReset: () => void;
     onToggleTheme: () => void;
 };
+
 export const CommandPanel = memo(function CommandPanel(props: Props) {
     const { commandState, connectionReady, connected, isDarkMode, onArm, onFire, onStart, onStop, onRefreshClock, onReset, onToggleTheme } = props;
     const commandLabel = { safe: "SAFE", armed: "ARMED", firing: "SENDING", complete: "FIRED" }[commandState];

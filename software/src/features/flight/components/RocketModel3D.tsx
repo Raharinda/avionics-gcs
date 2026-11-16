@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { createRocketScene } from "../../visualization/createRocketScene";
-import type { RocketModelProps, RocketSceneState } from "../../types/visualization";
+import { createRocketScene } from "../../../visualization/createRocketScene";
+import type { RocketModelProps, RocketSceneState } from "../../../types/visualization";
 export function RocketModel3D({ roll = 0, pitch = 0, yaw = 0, quaternion = null, active = true, mode = "rocket", sensorFace = "ZP", mounting, paused = false }: RocketModelProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const sceneRef = useRef<ReturnType<typeof createRocketScene> | null>(null);

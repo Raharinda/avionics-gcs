@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { TelemetryPoint } from "../../types/telemetry";
+import type { TelemetryPoint } from "../../../types/telemetry";
 export type TelemetryChartProps = {
     data: TelemetryPoint[];
     dataKey: "temperature" | "pressure" | "acceleration" | "gyroscope";

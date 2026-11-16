@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { FACES, faceLabel, type FaceId } from "../../types/imu";
-import type { useImuCalibration } from "../../hooks/useImuCalibration";
-import { RocketViewport } from "../molecules/RocketViewport";
-import { calibrationHint } from "../../data/calibrationHint";
-import { useTelemetryFreshness } from "../../hooks/useTelemetryFreshness";
-import type { TelemetryPoint } from "../../types/telemetry";
-import { sensorAxisLabel } from "../../data/rocketAxes";
+import { FACES, faceLabel, type FaceId } from "../../../types/imu";
+import type { useImuCalibration } from "../hooks/useImuCalibration";
+import { RocketViewport } from "../../flight/components/RocketViewport";
+import { calibrationHint } from "../../../data/calibrationHint";
+import { useTelemetryFreshness } from "../../telemetry/hooks/useTelemetryFreshness";
+import type { TelemetryPoint } from "../../../types/telemetry";
+import { sensorAxisLabel } from "../../../data/rocketAxes";
 type Props = {
     controller: ReturnType<typeof useImuCalibration>;
     connected: boolean;

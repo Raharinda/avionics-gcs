@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DUMMY_SOURCE } from "../data/dummyTelemetry";
-import { sendSerialCommand } from "../services/serialConnection";
-import { useSerialConnection } from "./useSerialConnection";
-import { useTelemetry } from "./useTelemetry";
-import { useImuCalibration } from "./useImuCalibration";
-import type { CommandState, Phase } from "../types/telemetry";
+import { DUMMY_SOURCE } from "../../../data/dummyTelemetry";
+import { sendSerialCommand } from "../../../services/serialConnection";
+import { useSerialConnection } from "../../connection/hooks/useSerialConnection";
+import { useTelemetry } from "../../telemetry/hooks/useTelemetry";
+import { useImuCalibration } from "../../calibration/hooks/useImuCalibration";
+import type { CommandState, Phase } from "../../../types/telemetry";
 export function useDashboardController() {
     const [phase, setPhase] = useState<Phase>("Initialization");
     const [commandState, setCommandState] = useState<CommandState>("safe");

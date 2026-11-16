@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { parseCalibrationProgress, parseImuState } from "../data/imuProtocol";
-import type { CalibrationProgress, FaceId, ImuState } from "../types/imu";
+import { parseCalibrationProgress, parseImuState } from "../../../data/imuProtocol";
+import type { CalibrationProgress, FaceId, ImuState } from "../../../types/imu";
 const EMPTY: CalibrationProgress = { active: false, face: null, samples: 0, target: 200, completed: [] };
 export function useImuCalibration(connected: boolean, source: string, sendCommand: (command: string) => Promise<void>) {
     const [state, setState] = useState<ImuState | null>(null);
