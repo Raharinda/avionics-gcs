@@ -1,6 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+.connection-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.connection-port { display: block; max-width: 235px; overflow: hidden; text-overflow: ellipsis; }
+.connection-copy small { color: #9299a3; font-size: 10px; font-weight: 400; }
+
 :root { font-family: "DM Sans", sans-serif; color: #17202d; background: #f5f6f8; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 html, body, #root { overscroll-behavior-y: none; }

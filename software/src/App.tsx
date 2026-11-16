@@ -137,6 +137,14 @@ function App() {
   const modelYaw = hasCalibrated && latestTelemetry ? latestTelemetry.yaw : 0;
   const chartData = useMemo(() => series, [series]);
   const hasTelemetry = series.length > 0;
+  const selectedPortName = dataSource.split(" · ")[0];
+  const detectedPort = dataSource === DUMMY_SOURCE
+    ? undefined
+    : serialPorts.find((port) => port.name === selectedPortName);
+  const portStatusLabel = dataSource === DUMMY_SOURCE
+    ? "Dummy data"
+    : detectedPort ? `Connected at ${detectedPort.name}` : "Port disconnected";
+  const streamIsActive = connected && (dataSource === DUMMY_SOURCE || detectedPort !== undefined);
   const sourceAvailable =
     dataSource === DUMMY_SOURCE || dataSource.startsWith("COM");
   const connectionReady =
@@ -325,9 +333,15 @@ function App() {
         <div className="brand">
           <div className="brand-mark">G</div>
           <strong>AVIONICS GCS</strong>
-          <span className="connection-pill">
-            <i className={portConnected ? "connected" : ""} />
-            {portConnected ? "Port connected" : "Port disconnected"}
+          <span className="connection-pill" role="status" aria-live="polite"
+            title={detectedPort
+              ? `${detectedPort.description ?? "Serial device"} detected. Start/Stop controls the telemetry stream.`
+              : dataSource === DUMMY_SOURCE ? "Simulated telemetry source" : "Selected Serial port is not detected"}>
+            <i className={detectedPort ? "connected" : ""} />
+            <span className="connection-copy">
+              <span className="connection-port">{portStatusLabel}</span>
+              <small>{streamIsActive ? "Streaming" : "Not streaming"}</small>
+            </span>
           </span>
         </div>
         <nav className="phase-nav">
@@ -813,8 +827,8 @@ function App() {
               ? rawSerialLine || "No raw serial data received"
               : `${log}
 Telemetry source: ${dataSource}
-Port: ${portConnected ? "connected" : "disconnected"}
-Listening: ${connected ? "active" : "stopped"}`}
+Port: ${portStatusLabel}
+Listening: ${streamIsActive ? "active" : "stopped"}`}
           </pre>
         )}
         <button
