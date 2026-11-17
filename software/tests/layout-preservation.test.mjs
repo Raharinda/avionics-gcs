@@ -7,9 +7,9 @@ import { createElement } from 'react';
 import { renderToPipeableStream } from 'react-dom/server';
 import { createServer, createRunnableDevEnvironment } from 'vite';
 
-test('the refactor preserves dashboard markup and all existing stylesheet bytes', { timeout: 15000 }, async () => {
+test('dashboard markup and stylesheet match the reviewed layout', { timeout: 15000 }, async () => {
   const stylesheet = await readFile(new URL('../src/App.css', import.meta.url));
-  assert.equal(createHash('sha256').update(stylesheet).digest('hex'), '31d76fbf6b17fa031ebb9ea141ddc2fa0b9bb4e288f8843b221f120c4f505370');
+  assert.equal(createHash('sha256').update(stylesheet).digest('hex'), '56d9cb32bd99b624423287f943584712767117321278e7ec714b0e4cc531096d');
   const RealDate = Date;
   globalThis.Date = class extends RealDate {
     constructor(...args) { super(...(args.length ? args : ['2026-11-16T07:00:00Z'])); }

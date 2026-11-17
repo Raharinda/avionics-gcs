@@ -5,16 +5,51 @@ dan PlatformIO. Target bawaan `esp32dev`, flash 4 MB. Untuk ESP32-C3/S3, konfigu
 board harus disesuaikan sebelum build dan flash.
 
 Firmware `imu3d-v2` mengirim data sensor dan orientasi relatif melalui USB
-Serial ke aplikasi desktop GCS. Pengiriman ESP-NOW belum diimplementasikan.
+Serial ke aplikasi desktop GCS. Telemetri sensor juga dikirim lewat Ebyte
+E32-433T20D pada UART2, dalam mode transparan setiap dua detik saat AUX siap.
+Pengiriman ESP-NOW belum diimplementasikan.
 Lihat [panduan kalibrasi enam pose dan logika 3D](../../../docs/imu-orientation.md)
 untuk menentukan acuan awal, pemasangan sumbu, dan membaca profil tersimpan.
+
+## Transmitter LoRa Ebyte E32-433T20D
+
+Konfigurasi ESP32 dipusatkan di `include/lora_radio.h`: UART **9600 baud 8N1**,
+RX **GPIO 16**, TX **GPIO 17**, AUX **GPIO 23**, interval **2000 ms**.
+Sambungkan GPIO 16 ke TXD E32 dan GPIO 17 ke RXD E32. AUX adalah input ESP32.
+**M0 dan M1 E32 harus terhubung ke GND** untuk mode normal. Semua GND bersama;
+catu uji pengguna 3,3 V harus stabil dan mampu menyuplai kebutuhan modul.
+Sensor tetap memakai GPIO 21/22; USB Serial tetap **115200 baud**.
+
+Firmware tidak menulis konfigurasi modul. Kedua E32 harus sudah memakai mode
+transparan, UART 9600 8N1, alamat/channel/air rate/FEC yang cocok. Default manual:
+alamat `0x0000`, channel `0x17` (433 MHz), air rate 2,4 kbps. Baud/channel/daya
+yang tersimpan sebelumnya tetap berlaku. Tidak ada AT command, network ID,
+header `AT+SEND`, respons `+OK`, atau header penerimaan `+RCV` pada jalur ini.
+
+Startup mencetak `# LORA E32 UART siap | baud=9600 RX=16 TX=17 AUX=23`.
+Transmitter mengirim jika AUX HIGH stabil minimal 2 ms dan buffer UART tersedia.
+AUX LOW hanya menunda kiriman; ketika HIGH kembali, firmware dapat melanjutkan
+otomatis. Log `TX UART bytes=...` berarti frame masuk UART lokal, bukan ACK
+receiver. AUX HIGH juga tidak membuktikan receiver terhubung atau channel cocok.
+Pesan pemeriksaan wiring hanya muncul jika AUX belum siap terus-menerus selama
+5 detik; AUX LOW sesaat selama pengiriman tidak memunculkan pesan tersebut.
+
+Frame radio berupa JSON sensor dengan newline, maksimal 240 byte termasuk
+newline (batas aplikasi ini). E32 membagi otomatis menjadi paket RF 58 byte;
+receiver harus mengumpulkan stream UART hingga newline sebelum meneruskannya
+ke Tauri. Pembacaan IMU tetap menargetkan 100 Hz dan USB 10 Hz. Sampel IMU tidak
+valid/kedaluwarsa tidak dikirim; barometer gagal menghasilkan `pressure:null`.
+
+Radio tahap ini belum meneruskan quaternion, status/profil IMU, atau command
+kalibrasi dari receiver. Kalibrasi dan model 3D tetap tersedia melalui USB
+langsung ke transmitter. Lihat [panduan E32 dan cara flash](../../../docs/lora-e32.md).
 
 ## Isi firmware
 
 - Membaca MPU6050: percepatan X/Y/Z (m/s²), kecepatan sudut X/Y/Z (rad/s),
   serta suhu internal chip (°C).
 - Membaca BMP280: suhu (°C) dan tekanan udara (hPa).
-- Target pembacaan IMU 100 Hz, pembacaan BMP280 2 Hz, dan telemetry JSON
+- Target pembacaan IMU 100 Hz, pembacaan BMP280 10 Hz, dan telemetry JSON
   10 Hz melalui Serial 115200 baud.
 - Kalibrasi ±X/±Y/±Z menyimpan offset/skala akselerometer dan bias gyro ke
   NVS ESP32. Quaternion relatif dikirim setelah operator menetapkan acuan.
@@ -57,7 +92,10 @@ gyroscope dikonversi ke **rad/s** oleh driver lokal. Saat diam, besar vektor per
 sekitar 9,81 m/s² karena gravitasi; hasil per sumbu tergantung orientasi sensor.
 Kalibrasi tersedia melalui dialog aplikasi desktop. Suhu MPU6050 merupakan suhu internal chip.
 
-BMP280 memakai oversampling suhu ×2, tekanan ×16, filter ×16, dan standby 250 ms.
+BMP280 memakai oversampling suhu ×2 dan tekanan ×16, filter ×2, serta standby
+minimum (`STANDBY_MS_1` pada library). Tekanan dibaca setiap 100 ms agar altitude
+lebih cepat merespons. Target telemetry tetap 10 Hz; jeda tampilan angka/grafik
+gyro dan accelerometer di dashboard tetap 1 detik.
 Library menerapkan koefisien kompensasi pabrik. Nilai tekanan diubah dari Pa
 menjadi hPa dengan membagi 100.
 

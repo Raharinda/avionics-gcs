@@ -4,6 +4,8 @@
 #include <Preferences.h>
 #include "mpu6050_reader.h"
 #include "imu_calibration.h"
+#include "imu_profile_storage.h"
+#include "lora_radio.h"
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -11,7 +13,7 @@
 
 namespace {
 constexpr int kSdaPin=21, kSclPin=22;
-constexpr uint32_t kSampleIntervalUs=10000, kTelemetryIntervalMs=100, kBmpIntervalMs=500;
+constexpr uint32_t kSampleIntervalUs=10000, kTelemetryIntervalMs=100, kBmpIntervalMs=100;
 Mpu6050Reader mpu(Wire);
 Adafruit_BMP280 bmp(&Wire);
 imu::CalibrationProfile profile;
@@ -19,6 +21,7 @@ imu::SixFaceCalibration calibration;
 imu::AttitudeFilter filter;
 imu::Quaternion reference;
 imu::Vec accel{{0,0,0}}, gyro{{0,0,0}};
+imu::Vec rawAccel{{0,0,0}}, rawGyro{{0,0,0}};
 struct ReferenceRecord {
     uint32_t version=1;
     float quaternion[4]={1,0,0,0};
@@ -34,6 +37,8 @@ uint8_t bmpAddress=0;
 uint32_t lastSampleUs=0, lastTelemetryMs=0, lastBmpMs=0, lastRetryMs=0, lastProgressMs=0, lastValidMs=0;
 String commandBuffer;
 bool discardCommand=false;
+uint32_t lastLoRaSendMs=0;
+radio::BusyWarning loraBusyWarning;
 
 bool present(uint8_t address) {
     Wire.beginTransmission(address);
@@ -112,6 +117,28 @@ void saveProfile() {
     Serial.println("CALIBRATION_COMPLETE:Enam posisi tersimpan di ESP32");
     printState(); printProgress();
 }
+void resetCalibration() {
+    // Stop capture first, so it cannot save a new profile during a reset/retry.
+    calibration.cancel();
+    Preferences storage;
+    const auto result=imu::erase_calibration(storage);
+    if (result==imu::EraseCalibrationResult::Done || result==imu::EraseCalibrationResult::ProfileFailed) {
+        lastReference=ReferenceRecord{}; hasLastReference=false;
+        reference=imu::Quaternion{}; referenceSet=false;
+    }
+    if (result==imu::EraseCalibrationResult::Done) {
+        profile=imu::CalibrationProfile{}; calibrated=false;
+        calibration.staged=imu::CalibrationProfile{};
+        filter.reset();
+        // The next telemetry frame must already contain uncorrected readings.
+        accel=rawAccel; gyro=rawGyro;
+    }
+    printState(); printProgress();
+    if (result==imu::EraseCalibrationResult::Done)
+        Serial.println("CALIBRATION_RESET");
+    else
+        Serial.println("CALIBRATION_RESET_ERROR:Sesi dihentikan, tetapi profil/acuan belum berhasil dihapus dari penyimpanan ESP32. Coba lagi.");
+}
 void diagnostics() {
     Serial.print("MPU6050 diagnostics:");
     const uint8_t registers[]={0x75,0x6B,0x6C,0x1A,0x1B,0x1C};
@@ -141,8 +168,9 @@ void initSensors() {
     if (!bmpReady) for (uint8_t address : {0x76,0x77}) {
         if (present(address) && bmp.begin(address)) {
             bmp.setSampling(Adafruit_BMP280::MODE_SLEEP); delay(100);
+            // Keep pressure precision, with short standby and a low-latency filter.
             bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,Adafruit_BMP280::SAMPLING_X2,
-                Adafruit_BMP280::SAMPLING_X16,Adafruit_BMP280::FILTER_X16,Adafruit_BMP280::STANDBY_MS_250);
+                Adafruit_BMP280::SAMPLING_X16,Adafruit_BMP280::FILTER_X2,Adafruit_BMP280::STANDBY_MS_1);
             bmpReady=true; bmpAddress=address; Serial.printf("BMP280 siap di 0x%02X\n",address); break;
         }
     }
@@ -161,6 +189,8 @@ void command(const String& input) {
         printProgress();
     } else if (input=="CALIBRATE_CANCEL") {
         calibration.cancel(); Serial.println("CALIBRATION_CANCELLED"); printProgress(); printState();
+    } else if (input=="CALIBRATE_RESET") {
+        resetCalibration();
     } else if (input=="CALIBRATE_FINISH") saveProfile();
     else if (input.startsWith("IMU_MOUNT:")) {
         int nose=0,right=0; char extra=0;
@@ -229,8 +259,8 @@ void sampleImu(uint32_t nowUs) {
     }
     const bool wasValid=imuValid;
     imuValid=true; lastValidMs=millis(); temperature=sample.temperature_c;
-    const imu::Vec rawAccel{{sample.accel[0],sample.accel[1],sample.accel[2]}};
-    const imu::Vec rawGyro{{sample.gyro[0],sample.gyro[1],sample.gyro[2]}};
+    rawAccel={{sample.accel[0],sample.accel[1],sample.accel[2]}};
+    rawGyro={{sample.gyro[0],sample.gyro[1],sample.gyro[2]}};
     if (calibration.active) {
         if (calibration.add(rawAccel,rawGyro)) {
             printProgress();
@@ -253,6 +283,40 @@ void readBmp() {
     if (!present(bmpAddress)) { bmpReady=false; pressure=NAN; return; }
     bmpTemperature=bmp.readTemperature(); pressure=bmp.readPressure()/100.0F;
     if (!std::isfinite(bmpTemperature) || !std::isfinite(pressure) || pressure<=0) { bmpReady=false; pressure=NAN; }
+}
+void serviceLoRa(uint32_t now) {
+    const bool radioReady=radio::readyToSend(now);
+    if (loraBusyWarning.update(radioReady,now))
+        Serial.println("# LORA E32 AUX belum siap selama >=5000ms; periksa AUX=GPIO23, M0/M1=GND dan catu");
+    if (!radioReady) return;
+    if (now-lastLoRaSendMs<radio::kTelemetryIntervalMs) return;
+    lastLoRaSendMs=now;
+    if (!imuValid || now-lastValidMs>200 || !std::isfinite(temperature) ||
+        !imu::finite(accel) || !imu::finite(gyro)) return;
+
+    char pressureText[32];
+    if (std::isfinite(pressure) && pressure>0)
+        std::snprintf(pressureText,sizeof(pressureText),"%.2f",pressure);
+    else std::strcpy(pressureText,"null");
+
+    // A complete JSON line fits in the E32 buffer; the module automatically
+    // splits it into RF packets. USB telemetry/calibration remain independent.
+    char payload[radio::kMaxFrameBytes+1];
+    const int length=std::snprintf(payload,sizeof(payload),
+        "{\"timestampMs\":%lu,\"temperature\":%.2f,\"pressure\":%s,"
+        "\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,"
+        "\"gyroX\":%.4f,\"gyroY\":%.4f,\"gyroZ\":%.4f,"
+        "\"imuValid\":true,\"calibrated\":%s}\n",
+        static_cast<unsigned long>(now),temperature,pressureText,
+        accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2],calibrated?"true":"false");
+    if (length<=0 || static_cast<size_t>(length)>radio::kMaxFrameBytes) {
+        Serial.println("# LORA payload terlalu panjang; tidak dikirim");
+        return;
+    }
+    if (radio::sendLine(payload,static_cast<size_t>(length),now))
+        Serial.printf("# LORA E32 TX UART bytes=%d | bukan ACK receiver\n",length);
+    else
+        Serial.println("# LORA E32 UART sibuk/gagal; sampel dilewati");
 }
 void telemetry(uint32_t now) {
     imu::Quaternion relative;
@@ -278,6 +342,9 @@ void setup() {
     Serial.println("\nFirmware: imu3d-v2 | MPU6050 + BMP280 | SDA=D21 SCL=D22");
     if (!Wire.begin(kSdaPin,kSclPin,100000)) { Serial.println("MPU6050: Gagal membuka bus I2C"); while (true) delay(1000); }
     Wire.setTimeOut(20); loadProfile(); initSensors(); printState(); printProgress();
+    radio::begin();
+    Serial.println("# LORA E32 UART siap | baud=9600 RX=16 TX=17 AUX=23 | M0=M1=GND | interval=2000ms");
+    Serial.println("# LORA E32 memakai konfigurasi modul tersimpan: harus transparent 9600 8N1; default 433MHz");
     lastSampleUs=micros(); lastRetryMs=millis();
 }
 void loop() {
@@ -286,6 +353,7 @@ void loop() {
     serialCommands();
     const uint32_t now=millis();
     if (now-lastBmpMs>=kBmpIntervalMs) { lastBmpMs=now; readBmp(); }
+    serviceLoRa(now);
     if (now-lastTelemetryMs>=kTelemetryIntervalMs) { lastTelemetryMs=now; telemetry(now); }
     if ((!mpuReady || !bmpReady) && now-lastRetryMs>=5000) {
         lastRetryMs=now; initSensors(); printState();

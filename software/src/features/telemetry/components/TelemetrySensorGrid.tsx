@@ -27,7 +27,10 @@ export const TelemetrySensorGrid = memo(function TelemetrySensorGrid({ series, l
     latestTelemetry: TelemetryPoint | null;
     darkMode: boolean;
 }) {
-    const chartData = useSampledValue(series, 250);
+    const source = latestTelemetry ? latestTelemetry.sourcePort ?? "dummy" : null;
+    const chartData = useSampledValue(series, 250, source);
+    const imuChartData = useSampledValue(series, 1000, source);
+    const imuReading = imuChartData.length > 0 ? imuChartData[imuChartData.length - 1] : null;
     const hasTelemetry = series.length > 0;
     const chartColors = darkMode
         ? { temperature: "#ff8b76", pressure: "#aeb8c2", gyroscope: "#d0d7de", acceleration: "#8eb3ff" }
@@ -35,8 +38,8 @@ export const TelemetrySensorGrid = memo(function TelemetrySensorGrid({ series, l
     return <div className="sensor-grid">
     <SensorCard title="Temperature" value={latestTelemetry ? latestTelemetry.temperature.toFixed(2) : "—"} unit="°C" color={chartColors.temperature} darkMode={darkMode} data={chartData} dataKey="temperature" domain={TEMPERATURE_DOMAIN} hasData={hasTelemetry}/>
     <SensorCard title="Pressure" value={latestTelemetry?.pressure != null ? latestTelemetry.pressure.toFixed(2) : "—"} unit="hPa" color={chartColors.pressure} darkMode={darkMode} data={chartData} dataKey="pressure" domain={PRESSURE_DOMAIN} hasData={hasTelemetry}/>
-    <SensorCard title="Gyroscope" value={latestTelemetry ? latestTelemetry.gyroscope.toFixed(2) : "—"} unit="°/s" color={chartColors.gyroscope} darkMode={darkMode} data={chartData} dataKey="gyroscope" domain={GYRO_DOMAIN} hasData={hasTelemetry}/>
-    <SensorCard title="Accelerometer" value={latestTelemetry ? latestTelemetry.acceleration.toFixed(3) : "—"} unit="g" color={chartColors.acceleration} darkMode={darkMode} data={chartData} dataKey="acceleration" domain={ACCEL_DOMAIN} hasData={hasTelemetry}/>
+    <SensorCard title="Gyroscope" value={imuReading ? imuReading.gyroscope.toFixed(2) : "—"} unit="°/s" color={chartColors.gyroscope} darkMode={darkMode} data={imuChartData} dataKey="gyroscope" domain={GYRO_DOMAIN} hasData={imuChartData.length > 0}/>
+    <SensorCard title="Accelerometer" value={imuReading ? imuReading.acceleration.toFixed(3) : "—"} unit="g" color={chartColors.acceleration} darkMode={darkMode} data={imuChartData} dataKey="acceleration" domain={ACCEL_DOMAIN} hasData={imuChartData.length > 0}/>
     <SensorCard title="Magnetometer" value="—" unit="µT" color={darkMode ? "#aeb8c2" : "#a6a8aa"} darkMode={darkMode} data={chartData} dataKey="pressure" domain={MAGNETOMETER_DOMAIN} hasData={hasTelemetry}/>
     <SensorCard title="Orientation" value="—" unit="°" color={darkMode ? "#d0d7de" : "#252932"} darkMode={darkMode} data={chartData} dataKey="temperature" domain={TEMPERATURE_DOMAIN} hasData={hasTelemetry}/>
   </div>;

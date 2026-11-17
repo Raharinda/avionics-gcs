@@ -10,3 +10,10 @@ g++ -std=c++11 -Wall -Wextra -Werror -pedantic \
 g++ -std=c++17 -Wall -Wextra -Werror -pedantic -I include \
     test/host/test_imu_orientation.cpp -o "$test_binary"
 "$test_binary"
+g++ -std=c++17 -Wall -Wextra -Werror -pedantic -I include \
+    test/host/test_imu_profile_storage.cpp -o "$test_binary"
+"$test_binary"
+g++ -std=c++17 -Wall -Wextra -Werror -pedantic \
+    -I test/host/e32-stubs -I include \
+    test/host/test_e32_radio.cpp -o "$test_binary"
+"$test_binary"

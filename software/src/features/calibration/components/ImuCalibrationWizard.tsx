@@ -5,7 +5,6 @@ import { RocketViewport } from "../../flight/components/RocketViewport";
 import { calibrationHint } from "../../../data/calibrationHint";
 import { useTelemetryFreshness } from "../../telemetry/hooks/useTelemetryFreshness";
 import type { TelemetryPoint } from "../../../types/telemetry";
-import { sensorAxisLabel } from "../../../data/rocketAxes";
 type Props = {
     controller: ReturnType<typeof useImuCalibration>;
     connected: boolean;
@@ -13,24 +12,12 @@ type Props = {
     receivedAt: number | null;
     onClose: () => void;
 };
-const AXES = [1, -1, 2, -2, 3, -3];
-const axisLabel = (axis: number) => `${axis > 0 ? "+" : "−"}${"XYZ"[Math.abs(axis) - 1]}`;
 export function ImuCalibrationWizard({ controller: imu, connected, telemetry, receivedAt, onClose }: Props) {
     const telemetryFresh = useTelemetryFreshness(receivedAt);
     const [selectedFace, setSelectedFace] = useState<FaceId>("XP");
-    const [nose, setNose] = useState(3);
-    const [right, setRight] = useState(1);
-    useEffect(() => {
-        if (imu.state) {
-            setNose(imu.state.noseAxis);
-            setRight(imu.state.rightAxis);
-        }
-    }, [imu.state?.noseAxis, imu.state?.rightAxis]);
     useEffect(() => { if (imu.progress.face)
         setSelectedFace(imu.progress.face); }, [imu.progress.face]);
     const disabled = !connected || imu.pending || !imu.state?.imuReady;
-    const mountValid = Math.abs(nose) !== Math.abs(right);
-    const mountConfirmed = !!imu.state && nose === imu.state.noseAxis && right === imu.state.rightAxis;
     const reading = connected && telemetryFresh ? telemetry : null;
     const hint = calibrationHint(imu.progress.face ?? selectedFace, reading);
     return <div className="calibration-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget)
@@ -70,28 +57,17 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
           <div className="imu-actions">
             <button type="button" className="calibration-start" disabled={disabled || imu.progress.active} onClick={() => void imu.start()}>Mulai enam posisi</button>
             <button type="button" className="calibration-start" disabled={disabled || !imu.progress.active || imu.progress.face !== null} onClick={() => void imu.capture(selectedFace)}>Rekam {faceLabel(selectedFace)}</button>
-            {imu.progress.active && <button type="button" disabled={imu.pending} onClick={() => void imu.cancel()}>Batalkan sesi</button>}
+            <button type="button" disabled={!connected || imu.cancelling} onClick={() => void imu.cancel()}>{imu.cancelling ? "Menghapus kalibrasi…" : "Batalkan & hapus kalibrasi"}</button>
             {imu.progress.active && imu.progress.completed.length === 6 && <button type="button" disabled={imu.pending} onClick={() => void imu.save()}>Simpan profil</button>}
           </div>
-          <p className="imu-note">Setelah keenam posisi valid, offset, skala, bias gyro, dan rata-rata setiap pose otomatis disimpan di ESP32.</p>
+          <p className="imu-note">Setelah keenam posisi valid, profil otomatis disimpan di ESP32. Batalkan & hapus kalibrasi menghapus profil dan acuan tersimpan; data IMU dan gyro tetap tersedia.</p>
         </div>
         <div>
-          <h3>2. Pemasangan dan arah awal</h3>
-          <p>Pilih sumbu sensor yang menuju hidung dan sisi kanan roket. Tanda ± mengikuti tulisan atau panah pada papan.</p>
-          <label className="imu-axis-select">Sumbu sensor ke hidung<select value={nose} onChange={(e) => setNose(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis}>{axisLabel(axis)}</option>)}</select></label>
-          <label className="imu-axis-select">Sumbu sensor ke kanan<select value={right} onChange={(e) => setRight(Number(e.target.value))} disabled={imu.pending}>{AXES.map((axis) => <option key={axis} value={axis} disabled={Math.abs(axis) === Math.abs(nose)}>{axisLabel(axis)}</option>)}</select></label>
-          {mountValid && <>
-            <div className="imu-preview-title">PRATINJAU PEMASANGAN · SUMBU SENSOR TETAP</div>
-            <div className="imu-mount-preview"><RocketViewport mode="mounting" mounting={{ noseAxis: nose, rightAxis: right }}/></div>
-            <p className="imu-mount-caption">Pilihan: hidung mengarah {sensorAxisLabel(nose)} sensor; kanan mengarah {sensorAxisLabel(right)} sensor. Pratinjau berubah langsung saat pilihan diganti.</p>
-          </>}
-          {!mountValid && <p className="imu-error">Sumbu hidung dan kanan harus berbeda.</p>}
-          <button className="calibration-start imu-reference-button" type="button" disabled={!connected || !imu.state || imu.pending || imu.progress.active || !mountValid || mountConfirmed} onClick={() => void imu.applyMount(nose, right)}>Terapkan pemasangan ke ESP32</button>
-          <p className="imu-note">{mountConfirmed ? "✓ Pemasangan ini sudah dikonfirmasi ESP32." : "Pilihan belum diterapkan. Klik Terapkan pemasangan untuk menyimpannya."} Perubahan pemasangan membutuhkan acuan awal baru.</p>
-          <h3>3. Tetapkan pose nol untuk tampilan live</h3>
+          <h3>2. Tetapkan pose nol untuk tampilan live</h3>
           <p>Setelah kalibrasi selesai, pegang roket pada pose awal yang kamu inginkan. Tahan diam lalu tetapkan acuan. Pose ini menjadi posisi nol model 3D.</p>
-          <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active || !mountValid || !mountConfirmed} onClick={() => void imu.setReference(nose, right)}>Tetapkan posisi sekarang sebagai acuan</button>
-          <p className="imu-note">Tampilan live mengukur perubahan dari pose nol ini. Pilih tampilan Pemasangan sensor pada Rocket view untuk melihat hidung mengarah ke sumbu pilihanmu.</p>
+          <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active} onClick={() => { if (imu.state)
+            void imu.setReference(imu.state.noseAxis, imu.state.rightAxis); }}>Tetapkan posisi sekarang sebagai acuan</button>
+          <p className="imu-note">Tampilan live mengukur perubahan dari pose nol ini.</p>
           <p className="imu-reference-status">{imu.state?.referenceSet ? "✓ Acuan aktif pada sesi ini" : "Acuan sesi belum ditetapkan"}</p>
           <p className="imu-note">Profil dan catatan pose awal tersimpan setelah ESP32 mengonfirmasi. Setelah reboot, tetapkan acuan lagi. Yaw relatif dapat drift; arah kompas dan posisi XYZ dalam meter tidak diukur.</p>
           {imu.state?.profile && <div className="imu-saved-profile">

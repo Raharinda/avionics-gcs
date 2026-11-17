@@ -34,6 +34,10 @@ src/
 ## Aliran data
 
 ESP32 → backend Rust → event telemetry → `useTelemetry` → panel dashboard.
+Setiap klik Start yang membuka listener serial baru menetapkan tekanan barometer
+valid pertama sebagai acuan ketinggian 0 m. Altitude selanjutnya relatif terhadap
+acuan sesi itu, termasuk pada ekspor CSV. Jika tekanan belum valid, altitude
+tetap kosong; putusnya pembacaan barometer tidak mengganti acuan sesi.
 Event serial mentah ditampung oleh `useSerialLog` dan hanya memperbarui panel
 log, sehingga setiap baris serial tidak memicu render seluruh dashboard.
 Perintah kalibrasi tetap menunggu konfirmasi dari firmware. Pemisahan komponen
@@ -46,10 +50,13 @@ tidak menambah perintah perangkat atau mengubah rangkaian kontrol yang ada.
   oleh tampilan aktif tetap harus diunduh dan diparsing.
 - Jam laptop menyimpan timer di komponennya sendiri. Panel yang menerima props
   tetap menggunakan `memo`; callback transport dan tindakan kalibrasi stabil.
-- Angka dan orientasi tetap mengikuti paket telemetry. Grafik memakai snapshot
-  terbaru setiap 250 ms, dengan riwayat 120 titik tetap dipertahankan. Animasi
-  transisi garis dinonaktifkan agar tidak bertumpuk saat paket terus masuk;
-  bentuk kurva, warna, domain, ukuran, grid, dan tooltip tetap sama.
+- Orientasi roket, angka barometer, dan jumlah paket mengikuti paket telemetry
+  yang masuk. Grafik suhu/tekanan memakai snapshot terbaru setiap 250 ms.
+  Khusus angka dan grafik gyroscope/accelerometer memakai snapshot setiap
+  1000 ms, sehingga jeda tampilan tidak memperlambat pembacaan sensor atau
+  orientasi roket. Riwayat seluruh telemetry tetap mempertahankan 120 titik.
+  Snapshot dibersihkan saat data kosong atau sumber berganti. Animasi transisi
+  garis dinonaktifkan agar tidak bertumpuk saat paket terus masuk.
 - Log mempertahankan maksimum 200 baris dan frame parsial maksimum 200 baris.
   Riwayat diperbarui maksimal empat kali per detik; tampilan frame mentah tetap
   diperbarui setiap satu detik. Buffer tidak menyalin riwayat yang tidak berubah.
