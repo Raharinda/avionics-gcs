@@ -63,6 +63,12 @@ export function useDashboardController() {
             setLog("14:32:10.422  TX ARM_SYSTEM — awaiting FIRE command");
         }
     }, [connection.connectionReady, commandState]);
+    const disarmSystem = useCallback(() => {
+        if (commandState === "armed") {
+            setCommandState("safe");
+            setLog("14:32:10.422  ARM_SYSTEM disarmed — fire controls disabled");
+        }
+    }, [commandState]);
     const fireCharge = useCallback(() => {
         if (!connection.connectionReady || commandState !== "armed") {
             setLog("14:32:11.008  FIRE rejected — connect port first");
@@ -107,5 +113,5 @@ export function useDashboardController() {
     }, []);
     const latestTelemetry = telemetry.series.length ? telemetry.series[telemetry.series.length - 1] : null;
     return { connection, telemetry, imuCalibration, latestTelemetry, phase, commandState, log,
-        clockSynchronizedAt, serialLogResetVersion, startTelemetry, stopTelemetry, armSystem, fireCharge, resetCommands, refreshClock, downloadTelemetryCsv };
+        clockSynchronizedAt, serialLogResetVersion, startTelemetry, stopTelemetry, armSystem, disarmSystem, fireCharge, resetCommands, refreshClock, downloadTelemetryCsv };
 }

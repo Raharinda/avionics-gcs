@@ -8,6 +8,7 @@ import { TelemetrySensorGrid } from "../features/telemetry/components/TelemetryS
 import { CommandPanel } from "../features/command/components/CommandPanel";
 import { SerialLogPanel } from "../features/connection/components/SerialLogPanel";
 import { useDashboardController } from "../features/dashboard/hooks/useDashboardController";
+import { useTelemetryFreshness } from "../features/telemetry/hooks/useTelemetryFreshness";
 import { DUMMY_SOURCE } from "../data/dummyTelemetry";
 const ImuCalibrationWizard = lazy(() => import("../features/calibration/components/ImuCalibrationWizard").then((module) => ({ default: module.ImuCalibrationWizard })));
 export function TelemetryDashboard() {
@@ -15,6 +16,8 @@ export function TelemetryDashboard() {
     const { connection, telemetry, imuCalibration, latestTelemetry } = dashboard;
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
+    const telemetryFresh = useTelemetryFreshness(telemetry.receivedAt);
+    const hasTelemetry = telemetry.series.length > 0 && telemetryFresh;
     const openCalibration = useCallback(() => setIsCalibrationOpen(true), []);
     const closeCalibration = useCallback(() => setIsCalibrationOpen(false), []);
     const toggleTheme = useCallback(() => setIsDarkMode((enabled) => !enabled), []);
@@ -42,7 +45,8 @@ export function TelemetryDashboard() {
                 <TelemetryMetrics
                     altitude={latestTelemetry?.altitude ?? null}
                     packetCount={telemetry.packetCount}
-                    hasTelemetry={telemetry.series.length > 0}
+                    hasTelemetry={hasTelemetry}
+                    series={telemetry.series}
                 />
             }
             rocket={
@@ -61,15 +65,18 @@ export function TelemetryDashboard() {
                     onSetReference={imuCalibration.setReference}
                 />
             }
-            map={<MapPanel hasTelemetry={telemetry.series.length > 0} />}
-            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} darkMode={isDarkMode} />}
+            map={<MapPanel hasTelemetry={hasTelemetry} />}
+            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} darkMode={isDarkMode} hasTelemetry={hasTelemetry} />}
             commands={
                 <CommandPanel
                     commandState={dashboard.commandState}
                     connectionReady={connection.connectionReady}
                     connected={connection.connected}
                     isDarkMode={isDarkMode}
+                    hasTelemetry={hasTelemetry}
+                    latestTelemetry={latestTelemetry}
                     onArm={dashboard.armSystem}
+                    onDisarm={dashboard.disarmSystem}
                     onFire={dashboard.fireCharge}
                     onStart={dashboard.startTelemetry}
                     onStop={dashboard.stopTelemetry}

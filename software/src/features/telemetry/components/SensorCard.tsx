@@ -19,8 +19,8 @@ type SensorCardProps = {
 };
 export const SensorCard = memo(function SensorCard({ title, value, unit, color = "#3b6ff5", darkMode = false, data, dataKey, domain, hasData, }: SensorCardProps) {
     return (<Card className="sensor-card">
-      <div className="card-heading"><span>{title}</span><b className="live-tag">{hasData ? "LIVE" : "NO DATA"}</b></div>
-      <div className="sensor-value">{value}<small>{unit}</small></div>
+      <div className="card-heading"><span>{title}</span><b className={`live-tag${hasData ? "" : " no-data"}`}>{hasData ? "LIVE" : "NO DATA"}</b></div>
+      <div className="sensor-value">{hasData ? value : "—"}<small>{unit}</small></div>
       <div className="chart">
         <Suspense fallback={null}><TelemetryChart data={data} dataKey={dataKey} color={color} darkMode={darkMode} domain={domain}/></Suspense>
       </div>
