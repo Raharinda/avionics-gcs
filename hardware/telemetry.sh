@@ -4,7 +4,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 usage() {
     cat <<'EOF'
-Telemetri sensor E22 (MPU6050 + BMP280), bukan tes PING.
+Telemetri sensor E22 (MPU6050 + BMP280).
   ./hardware/telemetry.sh build [tx|rx]       Build keduanya atau satu peran
   ./hardware/telemetry.sh flash tx PORT       Flash firmware sensor transmitter
   ./hardware/telemetry.sh flash rx PORT       Flash receiver JSON untuk Tauri

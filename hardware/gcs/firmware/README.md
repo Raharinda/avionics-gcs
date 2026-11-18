@@ -8,10 +8,6 @@ Tidak membutuhkan sensor atau library tambahan. Konfigurasi ESP32 berada di
 Ini firmware **sensor RX**, dengan marker startup `E22 SENSOR TELEMETRY ROLE=RX`.
 Pasang bersama [firmware sensor transmitter](../../avionics/firmware/README.md).
 
-Untuk tes komunikasi awal tanpa sensor/JSON, gunakan
-[firmware tes PING TX/RX](../../radio-test/firmware/README.md), kemudian flash
-kembali firmware telemetry ini setelah link terbukti bekerja.
-
 ## Wiring receiver
 
 | E22 receiver | ESP32 receiver |
@@ -29,8 +25,9 @@ memakai transmisi transparan, UART 9600 8N1 pada masing-masing ESP32, serta
 alamat/NETID/channel/air rate/key yang cocok. Sensor hanya berada di transmitter.
 Pasang antena yang sesuai dan gunakan dua node terpisah untuk pengujian radio.
 Pastikan RSSI byte dan repeater OFF. Konfigurasi E22 memakai **M0=GND,
-M1=3V3**, bukan keduanya HIGH. Gunakan [pembaca/profil setup E22](../../radio-test/firmware/README.md)
-untuk menyamakan register kedua modul. E22-400T30D memiliki kebutuhan arus
+M1=3V3**, bukan keduanya HIGH. Firmware aplikasi memakai profil modul yang
+sudah tersimpan; lihat [panduan E22](../../../docs/lora-e22.md) untuk profil
+yang digunakan. E22-400T30D memiliki kebutuhan arus
 transmisi jauh lebih tinggi daripada E32; catu 5 V stabil dengan kapasitas
 setidaknya 1 A disarankan untuk node yang mengirim. UART/AUX tetap 3,3 V.
 
@@ -44,8 +41,8 @@ Dari root repository, pilih peran secara eksplisit:
 ./hardware/telemetry.sh monitor rx /dev/ttyACM0
 ```
 
-Sesuaikan port receiver. `telemetry.sh` selalu memilih firmware sensor, sehingga
-tidak perlu masuk ke folder proyek tes PING.
+Sesuaikan port receiver. `telemetry.sh` memilih `avionics/firmware` untuk TX
+dan `gcs/firmware` untuk RX.
 
 Colok ESP32 receiver saja terlebih dahulu untuk mengidentifikasi portnya.
 Jalankan dari folder ini:

@@ -106,7 +106,8 @@ Firmware avionics memakai C++ dengan Arduino Framework dan PlatformIO untuk ESP3
 
 Untuk dua Ebyte E22-400T30D dan dua ESP32, ikuti [panduan LoRa E22 transmitter → receiver → dashboard Tauri](docs/lora-e22.md). Firmware avionics mengirim JSON sensor melalui UART transparan dengan AUX pada GPIO 23; [firmware receiver E22](hardware/gcs/firmware/README.md) meneruskannya ke USB untuk dashboard.
 
-Untuk mengganti tes PING menjadi telemetri MPU6050 + BMP280, jalankan dari root repository:
+Kode transmitter berada di `hardware/avionics/firmware`, dan kode receiver di
+`hardware/gcs/firmware`. Untuk menjalankan telemetri MPU6050 + BMP280 dari root repository:
 
 ```bash
 ./hardware/telemetry.sh build

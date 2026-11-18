@@ -8,7 +8,7 @@ Firmware `imu3d-v2` mengirim data sensor dan orientasi relatif melalui USB
 Serial ke aplikasi desktop GCS. Telemetri sensor juga dikirim lewat Ebyte
 E22-400T30D pada UART2, dalam mode transparan setiap dua detik saat AUX siap.
 Ini firmware **sensor TX**, dengan marker startup `E22 SENSOR TELEMETRY ROLE=TX`.
-Firmware PING berada di proyek `hardware/radio-test/firmware` yang terpisah.
+Kode receiver berada di [hardware/gcs/firmware](../../gcs/firmware/README.md).
 Pengiriman ESP-NOW belum diimplementasikan.
 Lihat [panduan kalibrasi enam pose dan logika 3D](../../../docs/imu-orientation.md)
 untuk menentukan acuan awal, pemasangan sumbu, dan membaca profil tersimpan.
@@ -37,9 +37,9 @@ AUX, M0/M1 tetap berlevel **3,3 V**, dan MPU/BMP tetap pada catu breakout yang s
 
 Firmware telemetri tidak mengubah register E22. Kedua modul harus cocok dalam
 alamat, NETID, channel, air rate dan key; UART masing-masing harus 9600 8N1,
-mode TRANSPARENT, RSSI byte OFF dan repeater OFF. Gunakan build `config`
-untuk membaca `C1 00 09`, atau build `setup` untuk menulis profil tes yang sama
-pada kedua modul. Lihat [panduan E22](../../../docs/lora-e22.md).
+mode TRANSPARENT, RSSI byte OFF dan repeater OFF. Pengaturan E22 dilakukan
+terpisah dari firmware aplikasi; profil yang sudah berhasil dipakai tidak
+perlu ditulis ulang. Lihat [panduan E22](../../../docs/lora-e22.md).
 
 Startup berisi `# E22 SENSOR TELEMETRY ROLE=TX` dan `# LORA E22 UART siap`. Kiriman dilakukan hanya saat AUX HIGH
 stabil minimal 2 ms dan buffer UART tersedia. AUX LOW menunda kiriman tanpa

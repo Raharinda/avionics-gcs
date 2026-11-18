@@ -10,10 +10,9 @@ adalah **E32-433T20D**, mengikuti
 [manual lokal](E32-433T20D_UserManual_EN_v1.1_fr.pdf). Contoh RYLR998 lama tidak
 berlaku untuk modul ini.
 
-Untuk membuktikan link radio tanpa bergantung pada sensor, gunakan
-[tes PING TX/RX](../hardware/radio-test/firmware/README.md). Proyek tes terpisah
-menampilkan peran board dengan jelas dan mencetak `RX RADIO: PING ...` hanya
-untuk data yang masuk melalui UART2 receiver.
+Untuk menguji perangkat E22 yang digunakan proyek ini, ikuti
+[panduan telemetri sensor E22](lora-e22.md). Transmitter berada di
+`hardware/avionics/firmware`, receiver di `hardware/gcs/firmware`.
 
 ## Wiring transmitter
 
