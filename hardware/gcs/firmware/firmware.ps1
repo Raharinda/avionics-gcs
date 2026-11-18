@@ -16,17 +16,17 @@ Set-Location $projectDirectory
 
 switch ($Action) {
     "build" {
-        & $pio run -e e32_receiver
+        & $pio run -e esp32dev
     }
     "flash" {
-        $arguments = @("run", "-e", "e32_receiver", "-t", "upload")
+        $arguments = @("run", "-e", "esp32dev", "-t", "upload")
         if ($Port -ne "") {
             $arguments += @("--upload-port", $Port)
         }
         & $pio @arguments
     }
     "monitor" {
-        $arguments = @("device", "monitor", "-e", "e32_receiver", "--baud", "115200")
+        $arguments = @("device", "monitor", "-e", "esp32dev", "--baud", "115200")
         if ($Port -ne "") {
             $arguments += @("--port", $Port)
         }

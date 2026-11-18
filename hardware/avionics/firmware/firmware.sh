@@ -15,6 +15,12 @@ Contoh: ./firmware.sh flash /dev/ttyUSB0
 EOF
 }
 
+if [[ $# -gt 2 || "${2:-}" == tx || "${2:-}" == rx || "${2:-}" == config || "${2:-}" == setup ]]; then
+    echo "Skrip ini menerima flash [PORT], tanpa peran tx/rx/config/setup." >&2
+    echo "Untuk memilih tx/rx, gunakan ./hardware/telemetry.sh dari root repository." >&2
+    exit 2
+fi
+
 action="${1:-help}"
 case "$action" in
     help|-h|--help) usage; exit 0 ;;

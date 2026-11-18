@@ -50,7 +50,7 @@ export function useTelemetry({ connected, dataSource }: UseTelemetryOptions) {
         listen<Omit<TelemetryPoint, "time">>("telemetry", (event) => {
             const payload = event.payload;
             const current = connection.current;
-            if (!current.connected || current.dataSource === DUMMY_SOURCE ||
+            if (disposed || !current.connected || current.dataSource === DUMMY_SOURCE ||
                 (payload.sourcePort && payload.sourcePort !== current.dataSource.split(" · ")[0]))
                 return;
             setReceivedAt(Date.now());

@@ -1,4 +1,5 @@
 mod attitude;
+mod altitude;
 
 use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
@@ -84,9 +85,8 @@ struct TelemetryMessage {
     source_port: String,
 }
 
-impl TryFrom<RawTelemetryMessage> for TelemetryMessage {
-    type Error = &'static str;
-    fn try_from(raw: RawTelemetryMessage) -> Result<Self, Self::Error> {
+impl TelemetryMessage {
+    fn from_raw(raw: RawTelemetryMessage, altitude_reference: &mut altitude::AltitudeReference) -> Result<Self, &'static str> {
         if raw.imu_valid == Some(false) { return Err("MPU6050 sample marked invalid by firmware"); }
         if ![raw.temperature, raw.accel_x, raw.accel_y, raw.accel_z,
              raw.gyro_x, raw.gyro_y, raw.gyro_z].iter().all(|value| value.is_finite()) {
@@ -95,7 +95,7 @@ impl TryFrom<RawTelemetryMessage> for TelemetryMessage {
         let acceleration = raw.accel_x.hypot(raw.accel_y).hypot(raw.accel_z) / 9.80665;
         let gyroscope = raw.gyro_x.hypot(raw.gyro_y).hypot(raw.gyro_z).to_degrees();
         let pressure = raw.pressure.filter(|value| value.is_finite() && *value > 0.0);
-        let altitude = pressure.map(|pressure| 44330.0 * (1.0 - (pressure / 1013.25).powf(0.19029495)));
+        let altitude = altitude_reference.read(pressure);
         let orientation = raw.orientation.filter(|_| raw.calibrated && raw.reference_set)
             .and_then(attitude::normalize_quaternion);
         let [roll, pitch, yaw] = orientation.map(attitude::euler_degrees).unwrap_or([
@@ -249,6 +249,7 @@ fn read_serial_lines(
     app: tauri::AppHandle,
     port_name: String,
 ) {
+    let mut altitude_reference = altitude::AltitudeReference::default();
     let mut buffer = Vec::new();
     let mut chunk = [0_u8; 256];
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -277,7 +278,7 @@ fn read_serial_lines(
                     };
                     match serde_json::from_str::<RawTelemetryMessage>(json) {
                         Ok(raw) => {
-                            match TelemetryMessage::try_from(raw) {
+                            match TelemetryMessage::from_raw(raw, &mut altitude_reference) {
                                 Ok(mut message) => {
                                     message.source_port = port_name.clone();
                                     let _ = app.emit("telemetry", message);
@@ -331,7 +332,10 @@ mod telemetry_tests {
             "orientation":[0.70710678,0.0,0.0,0.70710678]})
     }
     fn convert(value: Value) -> Result<TelemetryMessage, &'static str> {
-        TelemetryMessage::try_from(serde_json::from_value::<RawTelemetryMessage>(value).unwrap())
+        convert_session(value, &mut altitude::AltitudeReference::default())
+    }
+    fn convert_session(value: Value, reference: &mut altitude::AltitudeReference) -> Result<TelemetryMessage, &'static str> {
+        TelemetryMessage::from_raw(serde_json::from_value::<RawTelemetryMessage>(value).unwrap(), reference)
     }
 
     #[test]
@@ -362,7 +366,7 @@ mod telemetry_tests {
         assert!(convert(value).is_err());
         let mut raw: RawTelemetryMessage=serde_json::from_value(sample()).unwrap();
         raw.accel_z=f64::NAN;
-        assert!(TelemetryMessage::try_from(raw).is_err());
+        assert!(TelemetryMessage::from_raw(raw, &mut altitude::AltitudeReference::default()).is_err());
     }
     #[test]
     fn absent_barometer_does_not_discard_valid_attitude() {
@@ -380,5 +384,30 @@ mod telemetry_tests {
         let telemetry=convert(value).unwrap();
         assert!(!telemetry.calibrated && !telemetry.reference_set);
         assert!(telemetry.orientation.is_none());
+    }
+    #[test]
+    fn altitude_is_zeroed_on_first_valid_pressure_of_each_start() {
+        let mut reference = altitude::AltitudeReference::default();
+        let mut value = sample();
+        value["pressure"] = Value::Null;
+        let missing = convert_session(value.clone(), &mut reference).unwrap();
+        assert!(missing.altitude.is_none() && missing.orientation.is_some());
+
+        value["pressure"] = json!(1010.0);
+        value["imuValid"] = json!(false);
+        assert!(convert_session(value.clone(), &mut reference).is_err());
+        let first = convert_session(sample(), &mut reference).unwrap();
+        assert_eq!(first.altitude, Some(0.0));
+
+        value["imuValid"] = json!(true);
+        value["pressure"] = json!(990.0);
+        let higher = convert_session(value.clone(), &mut reference).unwrap();
+        assert!(higher.altitude.unwrap() > 0.0);
+        assert_eq!(higher.pressure, Some(990.0));
+        assert_eq!(higher.timestamp_ms, first.timestamp_ms);
+        assert_eq!(higher.orientation, first.orientation);
+
+        let mut restarted = altitude::AltitudeReference::default();
+        assert_eq!(convert_session(value, &mut restarted).unwrap().altitude, Some(0.0));
     }
 }

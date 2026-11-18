@@ -1,6 +1,6 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { RocketViewport } from "./RocketViewport";
-import { rocketAxes, sensorAxisLabel } from "../../../data/rocketAxes";
+import { rocketAxes } from "../../../data/rocketAxes";
 import { useTelemetryFreshness } from "../../telemetry/hooks/useTelemetryFreshness";
 import type { ImuState } from "../../../types/imu";
 import type { TelemetryPoint } from "../../../types/telemetry";
@@ -20,10 +20,8 @@ type Props = {
 };
 export const RocketAttitudePanel = memo(function RocketAttitudePanel(props: Props) {
     const { latestTelemetry, receivedAt, simulated, connected, hardwareStreaming, imuState, calibrationActive, calibrationPending, paused, darkMode, onOpenCalibration, onSetReference } = props;
-    const [preferredRocketView, setRocketView] = useState<"rocket" | "mounting">("rocket");
     const confirmedMount = !simulated && imuState
         ? { noseAxis: imuState.noseAxis, rightAxis: imuState.rightAxis } : undefined;
-    const rocketView = confirmedMount ? preferredRocketView : "rocket";
     const displayedAxes = rocketAxes(confirmedMount);
     const freshAttitude = useTelemetryFreshness(receivedAt);
     const attitudeLive = simulated ? connected : hardwareStreaming && freshAttitude &&
@@ -42,17 +40,13 @@ export const RocketAttitudePanel = memo(function RocketAttitudePanel(props: Prop
               <div className="card-title-row">
                 <h2>Rocket view</h2>
                 <span className="axis">
-                  {rocketView === "mounting" ? "PRATINJAU PEMASANGAN" : attitudeStatus}
+                  {attitudeStatus}
                 </span>
               </div>
-              <div className="rocket-view-tabs" role="group" aria-label="Tampilan roket">
-                <button type="button" aria-pressed={rocketView === "rocket"} onClick={() => setRocketView("rocket")}>Orientasi live</button>
-                <button type="button" aria-pressed={rocketView === "mounting"} disabled={!confirmedMount} onClick={() => setRocketView("mounting")}>Pemasangan sensor</button>
-              </div>
               <div className="rocket-stage">
-                <RocketViewport mode={rocketView} active={attitudeLive} mounting={confirmedMount} paused={paused} darkMode={darkMode} quaternion={simulated ? null : latestTelemetry?.orientation ?? null} roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0}/>
+                <RocketViewport mode="rocket" active={attitudeLive} mounting={confirmedMount} paused={paused} darkMode={darkMode} quaternion={simulated ? null : latestTelemetry?.orientation ?? null} roll={latestTelemetry?.roll ?? 0} pitch={latestTelemetry?.pitch ?? 0} yaw={latestTelemetry?.yaw ?? 0}/>
               </div>
-              {rocketView === "rocket" && <div className="attitude-values">
+              <div className="attitude-values">
                 <div>
                   <span>{displayedAxes[0].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.roll.toFixed(1)}°` : "—"}</b>
@@ -65,14 +59,13 @@ export const RocketAttitudePanel = memo(function RocketAttitudePanel(props: Prop
                   <span>{displayedAxes[2].angleLabel}</span>
                   <b>{attitudeLive && latestTelemetry ? `${latestTelemetry.yaw.toFixed(1)}°` : "—"}</b>
                 </div>
-              </div>}
-              {confirmedMount && <p className="imu-mount-caption">Pemasangan terkonfirmasi: hidung {sensorAxisLabel(confirmedMount.noseAxis)} sensor · kanan {sensorAxisLabel(confirmedMount.rightAxis)} sensor.</p>}
-              <p className="imu-note">{rocketView === "mounting" ? "Pratinjau pemasangan: X/Y/Z sensor tetap, hidung mengarah ke sumbu yang dipilih. Gerakan sensor ditampilkan di Orientasi live." : `${attitudeStatus}. Acuan awal tidak memakai arah kompas.`} Drag untuk memutar kamera, scroll untuk zoom.</p>
+              </div>
+              <p className="imu-note">{attitudeStatus}. Acuan awal tidak memakai arah kompas. Drag untuk memutar kamera, scroll untuk zoom.</p>
               <div className="attitude-reference-actions">
                 <button type="button" className="attitude-reference-link" onClick={() => onOpenCalibration()}>Kalibrasi XYZ / tetapkan acuan</button>
-                {!simulated && rocketView === "rocket" && <button type="button" className="attitude-reference-link" disabled={!canStraighten || !confirmedMount} onClick={() => { if (confirmedMount)
+                {!simulated && <button type="button" className="attitude-reference-link" disabled={!canStraighten || !confirmedMount} onClick={() => { if (confirmedMount)
             void onSetReference(confirmedMount.noseAxis, confirmedMount.rightAxis); }}>Luruskan pose sekarang</button>}
               </div>
-              {!simulated && rocketView === "rocket" && <p className="imu-note">Untuk koreksi kemiringan awal: pegang roket tegak dan diam, lalu klik Luruskan pose sekarang. Ini menggantikan acuan awal X/Y/Z di ESP32.</p>}
+              {!simulated && <p className="imu-note">Untuk koreksi kemiringan awal: pegang roket tegak dan diam, lalu klik Luruskan pose sekarang. Ini menggantikan acuan awal X/Y/Z di ESP32.</p>}
             </article>);
 });

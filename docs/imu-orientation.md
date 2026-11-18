@@ -149,7 +149,14 @@ Rocket view menyediakan dua tampilan:
 ESP32 mengirim quaternion model melalui USB Serial sekitar 10 Hz. Backend
 Rust memvalidasi quaternion, menambahkan asal port, lalu mengirim event ke
 React. Three.js memakai quaternion tersebut dan menghaluskan transisi antar
-paket. BMP280 dibaca sekitar 2 Hz dan tidak menentukan orientasi model.
+paket. BMP280 dibaca sekitar 10 Hz (setiap 100 ms) dan tidak menentukan orientasi model.
+Filter tekanan ×2 dan standby minimum mengurangi jeda respons altitude;
+oversampling suhu ×2 dan tekanan ×16 tetap dipakai.
+Orientasi roket dan angka barometer di dashboard mengikuti paket masuk;
+khusus angka dan grafik gyro/accelerometer diperbarui setiap 1 detik. Jeda
+tampilan ini terpisah dari interval pembacaan IMU atau barometer di ESP32.
+Ketinggian dihitung relatif terhadap tekanan valid pertama setelah Start.
+Percepatan pembacaan BMP280 memerlukan flash firmware yang sudah diperbarui.
 
 ## Apa yang disimpan
 
@@ -167,6 +174,12 @@ tanpa heading absolut. Kalibrasi baru menghapus catatan acuan lama.
 Memutus Start/Stop tanpa mereset ESP32 tidak otomatis menghapus acuan aktif.
 Profil kalibrasi satu pose dari firmware lama tidak dipakai sebagai profil
 enam pose.
+
+Tombol **Batalkan & hapus kalibrasi** menghentikan sesi dan menghapus profil
+serta catatan acuan dari NVS ESP32. Setelah konfirmasi, pembacaan accelerometer
+dan gyro mentah tetap dikirim; kalibrasi enam posisi dan acuan baru diperlukan
+untuk orientasi 3D relatif. Firmware dan pilihan sumbu pemasangan tetap ada.
+Perintah ini memerlukan flash firmware terbaru yang mendukung `CALIBRATE_RESET`.
 
 ## Batas pengukuran
 
@@ -187,6 +200,7 @@ Semua perintah berupa satu baris teks diakhiri newline, 115200 baud.
 | `CALIBRATE_START` | Memulai sesi enam pose; profil lama tetap tersimpan |
 | `CALIBRATE_FACE:XP` | Mengambil +X; pilihan lain `XM`, `YP`, `YM`, `ZP`, `ZM` |
 | `CALIBRATE_CANCEL` | Membatalkan sesi yang sedang berjalan |
+| `CALIBRATE_RESET` | Menghentikan sesi dan menghapus profil serta acuan tersimpan; data sensor mentah tetap dikirim |
 | `CALIBRATE_FINISH` | Mencoba simpan ulang jika enam pose sudah lengkap |
 | `IMU_MOUNT:3,1` | Menyimpan hidung +Z dan kanan +X; perubahan membatalkan acuan |
 | `IMU_REFERENCE:3,1` | Validasi pemasangan dan tetapkan pose sekarang sebagai acuan |
@@ -194,6 +208,10 @@ Semua perintah berupa satu baris teks diakhiri newline, 115200 baud.
 
 `CALIBRATION_ERROR:` melaporkan penolakan atau kegagalan penyimpanan.
 `CALIBRATION_COMPLETE:` baru dikirim setelah profil tersimpan.
+`CALIBRATION_RESET` mengonfirmasi penghapusan dari NVS dan RAM, setelah
+`IMU_STATE:` serta `CALIBRATION_STATUS:` terbaru. `CALIBRATION_RESET_ERROR:`
+berarti penghapusan belum berhasil; baca status dan coba lagi. Penghapusan
+dapat diulang meskipun profil atau acuan sudah tidak tersimpan.
 `REFERENCE_SET:` diikuti `IMU_STATE:` mengonfirmasi acuan aktif.
 
 Telemetry berupa JSON tanpa awalan, misalnya (ilustrasi):
