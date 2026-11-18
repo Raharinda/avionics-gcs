@@ -1,10 +1,10 @@
 # Panduan MPU6050 + BMP280 → dua ESP32 + RYLR998 → Tauri
 
-> **ARSIP — bukan panduan untuk modul E32-433T20D pengguna.** Firmware aktif
-> sudah diganti ke Ebyte E32 dengan AUX GPIO 23. Ikuti
-> [panduan E32 yang berlaku](lora-e32.md). Semua contoh dan keterangan
+> **ARSIP — bukan panduan untuk modul E22-400T30D pengguna.** Firmware aktif
+> sudah diganti ke Ebyte E22-400T30D dengan AUX GPIO 23. Ikuti
+> [panduan E22 yang berlaku](lora-e22.md). Semua contoh dan keterangan
 > implementasi RYLR998 di bawah merujuk versi sebelumnya; jangan diterapkan
-> pada E32. E32 memakai protokol, frekuensi, baud bawaan, dan pin mode berbeda.
+> pada E22. E22 memakai protokol, frekuensi, baud bawaan, dan pin mode berbeda.
 
 Panduan ini mengikuti kode proyek yang ada: transmitter memakai firmware di
 `hardware/avionics/firmware`, receiver memakai ESP32 DevKit klasik, dan laptop

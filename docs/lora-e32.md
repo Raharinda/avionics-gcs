@@ -1,9 +1,19 @@
+> **ARSIP E32 — tidak berlaku untuk modul fisik E22-400T30D pengguna.**
+> Firmware aktif dan panduan sudah diperbaiki untuk E22. Ikuti
+> [panduan E22](lora-e22.md). Instruksi M0/M1 konfigurasi dan perintah E32
+> di bawah tidak boleh dipakai untuk E22. E22: M0=GND, M1=3V3 dan `C1 00 09`.
+
 # Transmitter dan receiver ESP32 + Ebyte E32-433T20D
 
 Firmware aktif berada di `hardware/avionics/firmware`. Modul yang ditargetkan
 adalah **E32-433T20D**, mengikuti
 [manual lokal](E32-433T20D_UserManual_EN_v1.1_fr.pdf). Contoh RYLR998 lama tidak
 berlaku untuk modul ini.
+
+Untuk membuktikan link radio tanpa bergantung pada sensor, gunakan
+[tes PING TX/RX](../hardware/radio-test/firmware/README.md). Proyek tes terpisah
+menampilkan peran board dengan jelas dan mencetak `RX RADIO: PING ...` hanya
+untuk data yang masuk melalui UART2 receiver.
 
 ## Wiring transmitter
 

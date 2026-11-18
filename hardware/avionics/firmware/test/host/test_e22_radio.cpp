@@ -28,7 +28,7 @@ int main() {
     assert(!radio::readyToSend(104));
     assert(!radio::readyToSend(105));
     assert(radio::readyToSend(106));
-    std::cout<<"PASS: E32 9600 8N1 and AUX GPIO23 gate, including busy recovery\n";
+    std::cout<<"PASS: E22 9600 8N1 and AUX GPIO23 gate, including busy recovery\n";
 
     const std::string line="{\"pressure\":1008.25,\"accelZ\":9.81}\n";
     assert(radio::sendLine(line.data(),line.size(),106));

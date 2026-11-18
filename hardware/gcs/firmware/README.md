@@ -1,28 +1,51 @@
-# Receiver ESP32 + Ebyte E32-433T20D
+# Receiver ESP32 + Ebyte E22-400T30D
 
-Firmware receiver untuk ESP32 DevKit/WROOM klasik. Menerima stream UART E32
+Firmware receiver untuk ESP32 DevKit/WROOM klasik. Menerima stream UART E22
 9600 baud dan meneruskan satu objek JSON per baris melalui USB 115200 ke Tauri.
 Tidak membutuhkan sensor atau library tambahan. Konfigurasi ESP32 berada di
 `include/receiver_config.h`.
 
+Ini firmware **sensor RX**, dengan marker startup `E22 SENSOR TELEMETRY ROLE=RX`.
+Pasang bersama [firmware sensor transmitter](../../avionics/firmware/README.md).
+
+Untuk tes komunikasi awal tanpa sensor/JSON, gunakan
+[firmware tes PING TX/RX](../../radio-test/firmware/README.md), kemudian flash
+kembali firmware telemetry ini setelah link terbukti bekerja.
+
 ## Wiring receiver
 
-| E32 receiver | ESP32 receiver |
+| E22 receiver | ESP32 receiver |
 | --- | --- |
 | TXD | GPIO 16 / RX UART2 |
 | RXD | GPIO 17 / TX UART2 |
 | AUX | GPIO 23 / input |
 | M0 | GND |
 | M1 | GND |
-| VCC | Catu 3,3 V stabil untuk pengujian pengguna |
+| VCC | Catu modul stabil; lihat kebutuhan daya E22 |
 | GND | GND bersama ESP32 receiver |
 
-Firmware tidak mengubah konfigurasi yang tersimpan di E32. Kedua modul harus
+Firmware tidak mengubah konfigurasi yang tersimpan di E22. Kedua modul harus
 memakai transmisi transparan, UART 9600 8N1 pada masing-masing ESP32, serta
-alamat/channel/air rate/FEC yang cocok. Sensor hanya berada di transmitter.
+alamat/NETID/channel/air rate/key yang cocok. Sensor hanya berada di transmitter.
 Pasang antena yang sesuai dan gunakan dua node terpisah untuk pengujian radio.
+Pastikan RSSI byte dan repeater OFF. Konfigurasi E22 memakai **M0=GND,
+M1=3V3**, bukan keduanya HIGH. Gunakan [pembaca/profil setup E22](../../radio-test/firmware/README.md)
+untuk menyamakan register kedua modul. E22-400T30D memiliki kebutuhan arus
+transmisi jauh lebih tinggi daripada E32; catu 5 V stabil dengan kapasitas
+setidaknya 1 A disarankan untuk node yang mengirim. UART/AUX tetap 3,3 V.
 
 ## Build dan flash
+
+Dari root repository, pilih peran secara eksplisit:
+
+```bash
+./hardware/telemetry.sh build rx
+./hardware/telemetry.sh flash rx /dev/ttyACM0
+./hardware/telemetry.sh monitor rx /dev/ttyACM0
+```
+
+Sesuaikan port receiver. `telemetry.sh` selalu memilih firmware sensor, sehingga
+tidak perlu masuk ke folder proyek tes PING.
 
 Colok ESP32 receiver saja terlebih dahulu untuk mengidentifikasi portnya.
 Jalankan dari folder ini:
@@ -39,15 +62,16 @@ Ganti port sesuai board receiver. Skrip mencari `pio` pada PATH atau
 
 ## Uji link radio
 
-1. Nyalakan transmitter yang sudah memakai firmware E32, misalnya dari charger
+1. Nyalakan transmitter yang sudah memakai firmware sensor E22, misalnya dari charger
    USB/power bank. Receiver tetap terhubung melalui USB ke laptop. Mulai pada
    jarak beberapa meter dengan antena terpasang.
-2. Pada monitor receiver harus muncul startup `# E32 receiver siap`.
+2. Pada monitor receiver harus muncul startup `# E22 SENSOR TELEMETRY ROLE=RX`
+   dan `# E22 receiver siap`.
 3. Ketika radio menerima telemetri, muncul JSON sensor asli dan penghitung:
 
    ```text
-   # E32 RX frame=1 bytes=... AUX=...
-   # E32 RX frame=2 bytes=... AUX=...
+   # E22 RX frame=1 bytes=... AUX=...
+   # E22 RX frame=2 bytes=... AUX=...
    ```
 
    `...` adalah placeholder. Frame baru diharapkan sekitar setiap 2 detik,
@@ -61,7 +85,7 @@ Ganti port sesuai board receiver. Skrip mencari `pio` pada PATH atau
 
 Penghitung `frame` menunjukkan baris yang diterima dengan pembungkus objek
 `{...}`. Isi JSON, field wajib, dan validitas nilai sensor tetap diperiksa oleh
-backend Rust. AUX tidak dipakai untuk memblokir pembacaan UART: E32 dapat
+backend Rust. AUX tidak dipakai untuk memblokir pembacaan UART: E22 dapat
 mengeluarkan data saat AUX LOW. AUX HIGH bukan bukti link radio terhubung.
 
 ## Dashboard
@@ -90,16 +114,17 @@ Status setiap 10 detik berisi `UART_bytes`, `frames`, `discarded`, dan level
 | Gejala | Pemeriksaan |
 | --- | --- |
 | Startup tidak terbaca | Port receiver, monitor 115200, firmware yang di-flash, kabel USB |
-| `UART_bytes=0`, `frames=0` | Transmitter hidup dan mengirim, TXD E32 ke GPIO16, M0/M1 GND, antena, catu, konfigurasi RF kedua modul |
+| `UART_bytes=0`, `frames=0` | Transmitter hidup dan mengirim, TXD E22 ke GPIO16, M0/M1 GND, antena, catu, konfigurasi RF kedua modul |
 | Byte bertambah tetapi frame tidak bertambah | Baud UART, data acak/fragmen tidak lengkap, delimiter newline transmitter |
 | `discarded` bertambah | Baud/catu/link, byte rusak, baris tidak lengkap atau melebihi 512 byte |
+| `menerima PING; flash firmware sensor` | Link sudah menerima pesan tes, tetapi transmitter masih memakai firmware PING |
 | JSON ada tetapi Tauri tidak menerima | Monitor sudah ditutup, port receiver dipilih, Start, kesalahan JSON pada serial log Tauri |
 
 Receiver mengumpulkan stream sampai newline melintasi beberapa paket RF.
 Baris rusak/terlalu panjang dibuang seluruhnya sampai newline berikutnya,
 sehingga ekor baris tersebut tidak diteruskan sebagai pengukuran baru.
 
-Tes framing tanpa perangkat: `./test-host.sh`. Tes mencakup fragmen 58 byte,
+Tes framing tanpa perangkat: `./test-host.sh`. Tes mencakup fragmen 32 byte,
 CRLF, beberapa frame dalam satu stream, tekanan null, data biner, kapasitas
 buffer, dan pemulihan setelah frame rusak. Build/tes host tidak menggantikan
-pengujian radio fisik. Lihat juga [panduan sistem E32](../../../docs/lora-e32.md).
+pengujian radio fisik. Lihat juga [panduan sistem E22](../../../docs/lora-e22.md).

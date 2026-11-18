@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
+#include <cstring>
 #include "receiver_config.h"
 #include "telemetry_line_buffer.h"
 
@@ -11,7 +12,7 @@ String usbCommand;
 bool discardCommand=false;
 
 void readRadio() {
-    // E32 drives AUX LOW while outputting received bytes. Read UART regardless
+    // E22 drives AUX LOW while outputting received bytes. Read UART regardless
     // of AUX; waiting for HIGH here could overflow the serial receive buffer.
     while (loRa.available()) {
         ++receivedBytes;
@@ -19,14 +20,17 @@ void readRadio() {
         if (result==receiver::TelemetryLineBuffer::Result::Line) {
             ++receivedLines;
             Serial.println(frames.line()); // JSON must start at column 1 for Tauri.
-            Serial.printf("# E32 RX frame=%lu bytes=%u AUX=%d\n",
+            Serial.printf("# E22 RX frame=%lu bytes=%u AUX=%d\n",
                 static_cast<unsigned long>(receivedLines),
                 static_cast<unsigned int>(frames.size()),digitalRead(receiver::kAuxPin));
         } else if (result!=receiver::TelemetryLineBuffer::Result::None) {
             ++discardedLines;
-            Serial.println(result==receiver::TelemetryLineBuffer::Result::Oversized ?
-                "# E32 RX buang baris melebihi 512 byte" :
-                "# E32 RX buang baris rusak/tidak berformat objek JSON; periksa baud dan link");
+            if (result==receiver::TelemetryLineBuffer::Result::Invalid &&
+                std::strncmp(frames.line(),"PING ",5)==0)
+                Serial.println("# E22 SENSOR RX menerima PING; flash firmware sensor pada transmitter");
+            else Serial.println(result==receiver::TelemetryLineBuffer::Result::Oversized ?
+                "# E22 RX buang baris melebihi 512 byte" :
+                "# E22 RX buang baris rusak/tidak berformat objek JSON; periksa baud dan link");
         }
     }
 }
@@ -37,11 +41,11 @@ void readUsbCommands() {
         if (c=='\r') continue;
         if (c=='\n') {
             if (usbCommand=="CALIBRATE_RESET")
-                Serial.println("CALIBRATION_RESET_ERROR:Receiver E32 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi.");
+                Serial.println("CALIBRATION_RESET_ERROR:Receiver E22 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi.");
             else if (usbCommand.startsWith("IMU_") || usbCommand.startsWith("CALIBRATE_"))
-                Serial.println("CALIBRATION_ERROR:Receiver E32 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi dan acuan 3D.");
+                Serial.println("CALIBRATION_ERROR:Receiver E22 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi dan acuan 3D.");
             else if (usbCommand.length() || discardCommand)
-                Serial.println("# E32 receiver tidak meneruskan command USB ke radio");
+                Serial.println("# E22 receiver tidak meneruskan command USB ke radio");
             usbCommand="";
             discardCommand=false;
         } else if (!discardCommand) {
@@ -60,8 +64,9 @@ void setup() {
     loRa.setRxBufferSize(2048);
     loRa.begin(receiver::kRadioBaud,SERIAL_8N1,receiver::kRxPin,receiver::kTxPin);
     delay(500);
-    Serial.println("# E32 receiver siap | UART=9600 USB=115200 RX=16 TX=17 AUX=23 | M0=M1=GND");
-    Serial.println("# E32 konfigurasi modul tersimpan harus cocok dengan transmitter; menunggu JSON melalui radio");
+    Serial.println("# E22 SENSOR TELEMETRY ROLE=RX | JSON sensor radio -> USB -> Tauri");
+    Serial.println("# E22 receiver siap | UART=9600 USB=115200 RX=16 TX=17 AUX=23 | M0=M1=GND");
+    Serial.println("# E22 konfigurasi modul tersimpan harus cocok dengan transmitter; menunggu JSON melalui radio");
     lastStatusMs=millis();
 }
 
@@ -71,7 +76,7 @@ void loop() {
     const uint32_t now=millis();
     if (now-lastStatusMs>=receiver::kStatusIntervalMs) {
         lastStatusMs=now;
-        Serial.printf("# E32 RX status UART_bytes=%lu frames=%lu discarded=%lu AUX=%d\n",
+        Serial.printf("# E22 RX status UART_bytes=%lu frames=%lu discarded=%lu AUX=%d\n",
             static_cast<unsigned long>(receivedBytes),static_cast<unsigned long>(receivedLines),
             static_cast<unsigned long>(discardedLines),digitalRead(receiver::kAuxPin));
     }

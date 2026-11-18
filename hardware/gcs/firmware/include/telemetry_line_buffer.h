@@ -2,7 +2,7 @@
 #include <cstddef>
 
 namespace receiver {
-// UART chunks and E32 RF packets are not application frames. Keep collecting
+// UART chunks and E22 RF packets are not application frames. Keep collecting
 // across gaps until newline. Drop a damaged/oversized line in its entirety.
 class TelemetryLineBuffer {
 public:

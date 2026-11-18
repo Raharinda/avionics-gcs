@@ -6,6 +6,7 @@
 #include "imu_calibration.h"
 #include "imu_profile_storage.h"
 #include "lora_radio.h"
+#include "sensor_telemetry.h"
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -38,6 +39,7 @@ uint32_t lastSampleUs=0, lastTelemetryMs=0, lastBmpMs=0, lastRetryMs=0, lastProg
 String commandBuffer;
 bool discardCommand=false;
 uint32_t lastLoRaSendMs=0;
+uint32_t loraSentPackets=0;
 radio::BusyWarning loraBusyWarning;
 
 bool present(uint8_t address) {
@@ -287,36 +289,37 @@ void readBmp() {
 void serviceLoRa(uint32_t now) {
     const bool radioReady=radio::readyToSend(now);
     if (loraBusyWarning.update(radioReady,now))
-        Serial.println("# LORA E32 AUX belum siap selama >=5000ms; periksa AUX=GPIO23, M0/M1=GND dan catu");
+        Serial.println("# LORA E22 AUX belum siap selama >=5000ms; periksa AUX=GPIO23, M0/M1=GND dan catu");
     if (!radioReady) return;
     if (now-lastLoRaSendMs<radio::kTelemetryIntervalMs) return;
     lastLoRaSendMs=now;
-    if (!imuValid || now-lastValidMs>200 || !std::isfinite(temperature) ||
-        !imu::finite(accel) || !imu::finite(gyro)) return;
-
-    char pressureText[32];
-    if (std::isfinite(pressure) && pressure>0)
-        std::snprintf(pressureText,sizeof(pressureText),"%.2f",pressure);
-    else std::strcpy(pressureText,"null");
-
-    // A complete JSON line fits in the E32 buffer; the module automatically
-    // splits it into RF packets. USB telemetry/calibration remain independent.
-    char payload[radio::kMaxFrameBytes+1];
-    const int length=std::snprintf(payload,sizeof(payload),
-        "{\"timestampMs\":%lu,\"temperature\":%.2f,\"pressure\":%s,"
-        "\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,"
-        "\"gyroX\":%.4f,\"gyroY\":%.4f,\"gyroZ\":%.4f,"
-        "\"imuValid\":true,\"calibrated\":%s}\n",
-        static_cast<unsigned long>(now),temperature,pressureText,
-        accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2],calibrated?"true":"false");
-    if (length<=0 || static_cast<size_t>(length)>radio::kMaxFrameBytes) {
-        Serial.println("# LORA payload terlalu panjang; tidak dikirim");
+    if (!imuValid || now-lastValidMs>200) {
+        Serial.println("# E22 SENSOR TX menunggu sampel MPU6050 valid; periksa sensor pada transmitter");
         return;
     }
-    if (radio::sendLine(payload,static_cast<size_t>(length),now))
-        Serial.printf("# LORA E32 TX UART bytes=%d | bukan ACK receiver\n",length);
-    else
-        Serial.println("# LORA E32 UART sibuk/gagal; sampel dilewati");
+
+    // A complete JSON line fits in the E22 buffer; the module automatically
+    // splits it into RF packets. USB telemetry/calibration remain independent.
+    char payload[radio::kMaxFrameBytes+1];
+    sensor_telemetry::Sample sample;
+    sample.timestampMs=now;
+    sample.temperatureC=temperature;
+    sample.pressureHpa=pressure;
+    sample.accel={{accel[0],accel[1],accel[2]}};
+    sample.gyro={{gyro[0],gyro[1],gyro[2]}};
+    sample.calibrated=calibrated;
+    const size_t length=sensor_telemetry::encodeLine(sample,payload,sizeof(payload));
+    if (length==0) {
+        Serial.println("# E22 SENSOR TX sampel tidak finite atau frame terlalu panjang; tidak dikirim");
+        return;
+    }
+    if (radio::sendLine(payload,length,now)) {
+        ++loraSentPackets;
+        Serial.printf("# E22 SENSOR TX packet=%lu bytes=%u imu=OK baro=%s | UART lokal, bukan ACK\n",
+            static_cast<unsigned long>(loraSentPackets),static_cast<unsigned int>(length),
+            std::isfinite(pressure) && pressure>0?"OK":"UNAVAILABLE");
+    } else
+        Serial.println("# LORA E22 UART sibuk/gagal; sampel dilewati");
 }
 void telemetry(uint32_t now) {
     imu::Quaternion relative;
@@ -343,8 +346,9 @@ void setup() {
     if (!Wire.begin(kSdaPin,kSclPin,100000)) { Serial.println("MPU6050: Gagal membuka bus I2C"); while (true) delay(1000); }
     Wire.setTimeOut(20); loadProfile(); initSensors(); printState(); printProgress();
     radio::begin();
-    Serial.println("# LORA E32 UART siap | baud=9600 RX=16 TX=17 AUX=23 | M0=M1=GND | interval=2000ms");
-    Serial.println("# LORA E32 memakai konfigurasi modul tersimpan: harus transparent 9600 8N1; default 433MHz");
+    Serial.println("# E22 SENSOR TELEMETRY ROLE=TX | MPU6050 + BMP280 | JSON sensor melalui radio");
+    Serial.println("# LORA E22 UART siap | baud=9600 RX=16 TX=17 AUX=23 | M0=M1=GND | interval=2000ms");
+    Serial.println("# LORA E22-400T30D memakai konfigurasi tersimpan: transparent 9600 8N1, RSSI byte OFF; alamat/NETID/channel/air rate/key harus cocok");
     lastSampleUs=micros(); lastRetryMs=millis();
 }
 void loop() {

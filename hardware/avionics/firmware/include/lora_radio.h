@@ -4,7 +4,7 @@
 #include <HardwareSerial.h>
 
 namespace radio {
-// Ebyte E32-433T20D: M0 and M1 must both be wired to GND (normal mode).
+// Ebyte E22-400T30D: M0 and M1 must both be wired to GND (normal mode).
 // The module must already use transparent transmission and 9600 baud, 8N1.
 // No configuration is written: channel/address/air rate remain as stored.
 constexpr uint32_t kBaud = 9600;
@@ -12,7 +12,9 @@ constexpr uint32_t kTelemetryIntervalMs = 2000;
 constexpr uint32_t kAuxStableMs = 2;
 constexpr uint32_t kBusyWarningMs = 5000;
 constexpr int kRxPin = 16, kTxPin = 17, kAuxPin = 23;
-// Application limit including newline, NOT the E32 RF packet size (58 bytes).
+// Application limit including newline. E22 packet size is configurable
+// (32/64/128/240 bytes); module buffer is 1000 bytes. UART chunks need not
+// correspond to complete application frames.
 constexpr size_t kMaxFrameBytes = 240;
 constexpr size_t kUartBufferBytes = 512;
 static_assert(kMaxFrameBytes <= kUartBufferBytes, "Frame must fit UART/module buffer");
@@ -75,8 +77,8 @@ inline bool readyToSend(uint32_t now) {
     return static_cast<uint32_t>(now - state.highSinceMs) >= kAuxStableMs;
 }
 
-// Transparent E32 UART: send the JSON line itself, without AT commands or
-// addressing headers. E32 automatically divides it into RF packets; receiver
+// Transparent E22 UART: send the JSON line itself, without AT commands or
+// addressing headers. E22 automatically divides it into RF packets; receiver
 // must buffer the serial stream until newline, not until a pause in reception.
 inline bool sendLine(const char* frame, size_t length, uint32_t now) {
     if (!frame || length == 0 || length > kMaxFrameBytes || frame[length-1] != '\n')
