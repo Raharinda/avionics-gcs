@@ -19,5 +19,6 @@ export type TelemetryPoint = {
   referenceSet?: boolean;
   imuValid?: boolean;
   timestampMs?: number | null;
+  rssi?: number | null;
   sourcePort?: string;
 };

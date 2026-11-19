@@ -73,6 +73,8 @@ struct RawTelemetryMessage {
     reference_set: bool,
     #[serde(default)]
     orientation: Option<[f64; 4]>, // firmware quaternion [w, x, y, z]
+    #[serde(default)]
+    rssi: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -99,6 +101,7 @@ struct TelemetryMessage {
     #[serde(rename = "referenceSet")]
     reference_set: bool,
     orientation: Option<[f64; 4]>,
+    rssi: Option<f64>,
     #[serde(rename = "sourcePort")]
     source_port: String,
 }
@@ -116,6 +119,7 @@ impl TelemetryMessage {
         let altitude = altitude_reference.read(pressure);
         let orientation = raw.orientation.filter(|_| raw.calibrated && raw.reference_set)
             .and_then(attitude::normalize_quaternion);
+        let rssi = raw.rssi.filter(|value| value.is_finite());
         let [roll, pitch, yaw] = orientation.map(attitude::euler_degrees).unwrap_or([
             raw.accel_y.atan2(raw.accel_z).to_degrees(),
             (-raw.accel_x).atan2(raw.accel_y.hypot(raw.accel_z)).to_degrees(), 0.0,
@@ -125,7 +129,7 @@ impl TelemetryMessage {
             accel_x: raw.accel_x, accel_y: raw.accel_y, accel_z: raw.accel_z,
             roll, pitch, yaw, timestamp_ms: raw.timestamp_ms,
             imu_valid: true, calibrated: raw.calibrated,
-            reference_set: orientation.is_some(), orientation, source_port: String::new(),
+            reference_set: orientation.is_some(), orientation, rssi, source_port: String::new(),
         })
     }
 }
