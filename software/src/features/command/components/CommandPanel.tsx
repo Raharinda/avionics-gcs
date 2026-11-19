@@ -24,15 +24,17 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
     const [healthOpen, setHealthOpen] = useState(false);
     const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
     useEffect(() => {
-        if (!resetConfirmOpen)
+        if (!resetConfirmOpen && !healthOpen)
             return;
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape")
+            if (event.key === "Escape") {
                 setResetConfirmOpen(false);
+                setHealthOpen(false);
+            }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [resetConfirmOpen]);
+    }, [resetConfirmOpen, healthOpen]);
     const commandLabel = { safe: "SAFE", armed: "ARMED", firing: "SENDING", complete: "FIRED" }[commandState];
     const healthChecks = [
         { label: "LoRa / Serial port", ok: connectionReady, detail: connectionReady ? "Port is connected and ready" : "Port is disconnected or unavailable" },

@@ -17,6 +17,14 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
     const [selectedFace, setSelectedFace] = useState<FaceId>("XP");
     useEffect(() => { if (imu.progress.face)
         setSelectedFace(imu.progress.face); }, [imu.progress.face]);
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape")
+                onClose();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [onClose]);
     const disabled = !connected || imu.pending || !imu.state?.imuReady;
     const reading = connected && telemetryFresh ? telemetry : null;
     const hint = calibrationHint(imu.progress.face ?? selectedFace, reading);
