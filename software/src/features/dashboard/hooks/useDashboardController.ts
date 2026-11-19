@@ -13,26 +13,39 @@ function formatLogTimestamp(date = new Date()): string {
     return `${date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
+function formatCsvNumber(value: number | null | undefined, maxDecimals: number): string {
+    if (value == null || !Number.isFinite(value))
+        return "";
+    return String(Number(value.toFixed(maxDecimals)));
+}
+
+function formatCsvFilename(date = new Date()): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `telemetry-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}.csv`;
+}
+
 export function buildTelemetryCsv(points: TelemetryPoint[]): string {
-    const header = "time,timestampMs,temperature,pressure,acceleration,gyroscope,altitude,accelX,accelY,accelZ,roll,pitch,yaw,calibrated,referenceSet";
-    const rows = points.map((point) => [
-        point.time,
+    const header = "No,Time (s),Timestamp (ms),Altitude (m),Pressure (hPa),Temperature (°C),Acceleration (g),Accel X (m/s²),Accel Y (m/s²),Accel Z (m/s²),Gyroscope (°/s),Yaw (°),Pitch (°),Roll (°),RSSI (dBm),Calibrated,Reference Set";
+    const rows = points.map((point, index) => [
+        index + 1,
+        formatCsvNumber(point.time, 3),
         point.timestampMs ?? "",
-        point.temperature,
-        point.pressure ?? "",
-        point.acceleration,
-        point.gyroscope,
-        point.altitude ?? "",
-        point.accelX,
-        point.accelY,
-        point.accelZ,
-        point.roll,
-        point.pitch,
-        point.yaw,
+        formatCsvNumber(point.altitude, 2),
+        formatCsvNumber(point.pressure, 2),
+        formatCsvNumber(point.temperature, 2),
+        formatCsvNumber(point.acceleration, 3),
+        formatCsvNumber(point.accelX, 3),
+        formatCsvNumber(point.accelY, 3),
+        formatCsvNumber(point.accelZ, 3),
+        formatCsvNumber(point.gyroscope, 2),
+        formatCsvNumber(point.yaw, 2),
+        formatCsvNumber(point.pitch, 2),
+        formatCsvNumber(point.roll, 2),
+        formatCsvNumber(point.rssi, 1),
         point.calibrated ?? "",
         point.referenceSet ?? "",
     ].join(","));
-    return [header, ...rows].join("\r\n");
+    return "\uFEFF" + ["sep=,", header, ...rows].join("\r\n");
 }
 
 export function useDashboardController() {
@@ -182,7 +195,7 @@ export function useDashboardController() {
         const csv = buildTelemetryCsv(exportPoints);
         try {
             const { save } = await import("@tauri-apps/plugin-dialog");
-            const path = await save({ defaultPath: `telemetry-${new Date().toISOString().slice(0, 10)}.csv`, filters: [{ name: "CSV files", extensions: ["csv"] }] });
+            const path = await save({ defaultPath: formatCsvFilename(), filters: [{ name: "CSV files", extensions: ["csv"] }] });
             if (!path) {
                 setLog("CSV export cancelled");
                 return;
