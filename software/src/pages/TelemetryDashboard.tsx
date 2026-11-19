@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useState } from "react";
+import { useTelemetryFreshness } from "../features/telemetry/hooks/useTelemetryFreshness";
 import { DashboardLayout } from "../features/dashboard/components/DashboardLayout";
 import { DashboardHeader } from "../features/dashboard/components/DashboardHeader";
 import { TelemetryMetrics } from "../features/telemetry/components/TelemetryMetrics";
@@ -8,7 +9,6 @@ import { TelemetrySensorGrid } from "../features/telemetry/components/TelemetryS
 import { CommandPanel } from "../features/command/components/CommandPanel";
 import { SerialLogPanel } from "../features/connection/components/SerialLogPanel";
 import { useDashboardController } from "../features/dashboard/hooks/useDashboardController";
-import { useTelemetryFreshness } from "../features/telemetry/hooks/useTelemetryFreshness";
 import { DUMMY_SOURCE } from "../data/dummyTelemetry";
 const ImuCalibrationWizard = lazy(() => import("../features/calibration/components/ImuCalibrationWizard").then((module) => ({ default: module.ImuCalibrationWizard })));
 export function TelemetryDashboard() {
@@ -16,8 +16,8 @@ export function TelemetryDashboard() {
     const { connection, telemetry, imuCalibration, latestTelemetry } = dashboard;
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
-    const telemetryFresh = useTelemetryFreshness(telemetry.receivedAt);
-    const hasTelemetry = telemetry.series.length > 0 && telemetryFresh;
+    const telemetryFresh = useTelemetryFreshness(telemetry.receivedAt, 5000);
+    const hasTelemetry = telemetry.series.length > 0 && telemetryFresh && connection.connected && connection.streamingSource === connection.dataSource;
     const openCalibration = useCallback(() => setIsCalibrationOpen(true), []);
     const closeCalibration = useCallback(() => setIsCalibrationOpen(false), []);
     const toggleTheme = useCallback(() => setIsDarkMode((enabled) => !enabled), []);
@@ -45,6 +45,7 @@ export function TelemetryDashboard() {
                 <TelemetryMetrics
                     altitude={latestTelemetry?.altitude ?? null}
                     packetCount={telemetry.packetCount}
+                    lostPacketCount={telemetry.lostPacketCount}
                     hasTelemetry={hasTelemetry}
                     series={telemetry.series}
                 />
@@ -66,7 +67,7 @@ export function TelemetryDashboard() {
                 />
             }
             map={<MapPanel hasTelemetry={hasTelemetry} />}
-            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} darkMode={isDarkMode} hasTelemetry={hasTelemetry} />}
+            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} dataSource={connection.dataSource} darkMode={isDarkMode} hasTelemetry={hasTelemetry} />}
             commands={
                 <CommandPanel
                     commandState={dashboard.commandState}

@@ -60,7 +60,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
               </button>
             </div>
             <div className="command-timeline">
-              <div className={commandState !== "safe" ? "done" : ""}>
+              <div className={commandState === "firing" || commandState === "complete" ? "done" : ""}>
                 <i />
                 Sending FIRE
               </div>
