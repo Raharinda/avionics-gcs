@@ -400,10 +400,12 @@ test('useDashboardController cancels fireTimer on reset/stop, isolates new data 
   assert.equal(state.phase, 'Initialization', 'unseen data source starts in Initialization phase');
   assert.equal(state.log, 'No telemetry data received');
 
-  // buildTelemetryCsv exports full schema and blank cells for null pressure/altitude
+  // buildTelemetryCsv exports Excel-friendly UTF-8 CSV with rounded numbers, units, and blank cells for null values
   const csv = controllerMod.buildTelemetryCsv(mockTelemetry.getExportSeries());
-  const lines = csv.split('\r\n');
-  assert.equal(lines.length, 2);
-  assert.match(lines[0], /timestampMs.*accelX.*roll.*pitch.*yaw/);
-  assert.equal(lines[1], '1,1000,30,,1,0,,0,0,9.81,1,2,3,true,false');
+  assert.ok(csv.startsWith('\uFEFFsep=,\r\n'), 'CSV starts with UTF-8 BOM and Excel separator directive');
+  const lines = csv.slice(1).split('\r\n');
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], 'sep=,');
+  assert.match(lines[1], /^No,Time \(s\),Timestamp \(ms\),Altitude \(m\),Pressure \(hPa\),Temperature \(°C\),Acceleration \(g\),.*Yaw \(°\),Pitch \(°\),Roll \(°\),RSSI \(dBm\),Calibrated,Reference Set$/);
+  assert.equal(lines[2], '1,1,1000,,,30,1,0,0,9.81,0,3,2,1,,true,false');
 });

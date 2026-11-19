@@ -6,6 +6,7 @@ import { TelemetryMetrics } from "../features/telemetry/components/TelemetryMetr
 import { RocketAttitudePanel } from "../features/flight/components/RocketAttitudePanel";
 import { MapPanel } from "../features/navigation/components/MapPanel";
 import { TelemetrySensorGrid } from "../features/telemetry/components/TelemetrySensorGrid";
+import { SignalStrengthCard } from "../features/telemetry/components/SignalStrengthCard";
 import { CommandPanel } from "../features/command/components/CommandPanel";
 import { SerialLogPanel } from "../features/connection/components/SerialLogPanel";
 import { useDashboardController } from "../features/dashboard/hooks/useDashboardController";
@@ -84,6 +85,15 @@ export function TelemetryDashboard() {
                     onRefreshClock={dashboard.refreshClock}
                     onReset={dashboard.resetCommands}
                     onToggleTheme={toggleTheme}
+                />
+            }
+            signal={
+                <SignalStrengthCard
+                    connected={connection.connected}
+                    hasTelemetry={hasTelemetry}
+                    latestTelemetry={latestTelemetry}
+                    packetCount={telemetry.packetCount}
+                    lostPacketCount={telemetry.lostPacketCount}
                 />
             }
             dialogs={

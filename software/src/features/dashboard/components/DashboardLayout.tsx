@@ -7,11 +7,12 @@ type Props = {
     map: ReactNode;
     sensors: ReactNode;
     commands: ReactNode;
+    signal?: ReactNode;
     dialogs: ReactNode;
     serialLog: ReactNode;
     onOpenCalibration: () => void;
 };
-export function DashboardLayout({ isDarkMode, header, metrics, rocket, map, sensors, commands, dialogs, serialLog, onOpenCalibration }: Props) {
+export function DashboardLayout({ isDarkMode, header, metrics, rocket, map, sensors, commands, signal, dialogs, serialLog, onOpenCalibration }: Props) {
     return (
         <main className={`app-shell ${isDarkMode ? "dark-mode" : ""}`}>
             {header}
@@ -29,7 +30,7 @@ export function DashboardLayout({ isDarkMode, header, metrics, rocket, map, sens
                 <section className="main-grid">
                     <div className="left-column">{rocket}{map}</div>
                     {sensors}
-                    {commands}
+                    <div className="right-column">{commands}{signal}</div>
                 </section>
             </div>
             {dialogs}
