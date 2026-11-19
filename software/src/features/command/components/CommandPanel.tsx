@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Icon } from "../../../components/ui/Icon";
 import type { CommandState, TelemetryPoint } from "../../../types/telemetry";
 
@@ -22,6 +22,17 @@ type Props = {
 export const CommandPanel = memo(function CommandPanel(props: Props) {
     const { commandState, connectionReady, connected, isDarkMode, hasTelemetry, latestTelemetry, onArm, onDisarm, onFire, onStart, onStop, onRefreshClock, onReset, onToggleTheme } = props;
     const [healthOpen, setHealthOpen] = useState(false);
+    const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+    useEffect(() => {
+        if (!resetConfirmOpen)
+            return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape")
+                setResetConfirmOpen(false);
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [resetConfirmOpen]);
     const commandLabel = { safe: "SAFE", armed: "ARMED", firing: "SENDING", complete: "FIRED" }[commandState];
     const healthChecks = [
         { label: "LoRa / Serial port", ok: connectionReady, detail: connectionReady ? "Port is connected and ready" : "Port is disconnected or unavailable" },
@@ -102,6 +113,28 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
                 </div>
               </div>
             </div>}
+            {resetConfirmOpen && <div className="health-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setResetConfirmOpen(false)}>
+              <div className="health-modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="reset-confirm-title">
+                <div className="health-modal-header">
+                  <div>
+                    <div className="section-label">COMMAND VERIFICATION</div>
+                    <h2 id="reset-confirm-title">Reset fire charge state?</h2>
+                  </div>
+                  <button className="modal-close" type="button" onClick={() => setResetConfirmOpen(false)} aria-label="Close reset confirmation">×</button>
+                </div>
+                <p className="confirm-modal-copy">
+                  Current state is <strong>{commandLabel}</strong>. Resetting will return the ejection fire charge state to <strong>SAFE</strong> and phase to <strong>Initialization</strong>.
+                </p>
+                <div className="confirm-modal-actions">
+                  <button className="confirm-cancel" type="button" onClick={() => setResetConfirmOpen(false)}>
+                    Cancel
+                  </button>
+                  <button className="confirm-danger" type="button" onClick={() => { setResetConfirmOpen(false); onReset(); }}>
+                    Confirm Reset
+                  </button>
+                </div>
+              </div>
+            </div>}
             <div className="command-footer">
               <div className="command-footer-primary">
                 <button className="start" onClick={onStart} disabled={connected}>
@@ -115,7 +148,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
                 <button type="button" onClick={onRefreshClock}>
                   Refresh UTC
                 </button>
-                <button type="button" onClick={onReset}>
+                <button type="button" onClick={() => setResetConfirmOpen(true)}>
                   Reset
                 </button>
                 <button className="theme-toggle" type="button" onClick={onToggleTheme} aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
