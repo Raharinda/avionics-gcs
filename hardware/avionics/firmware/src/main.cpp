@@ -6,16 +6,18 @@
 #include "imu_calibration.h"
 #include "imu_profile_storage.h"
 #include "lora_radio.h"
+#include "../../../shared/e32_commands.h"
+#include "../../../shared/gpio19_link.h"
+#include "gpio19_output.h"
 #include "sensor_telemetry.h"
+#include "telemetry_average.h"
 #include <cmath>
 #include <cstring>
 #include <cstdio>
 #include <initializer_list>
 
 namespace {
-constexpr int kSdaPin=21, kSclPin=22;
-constexpr int kFireMosfetPin=19;
-constexpr uint32_t kFirePulseMs=10000;
+constexpr int kSdaPin=board::kSdaPin, kSclPin=board::kSclPin;
 constexpr uint32_t kSampleIntervalUs=10000, kTelemetryIntervalMs=100, kBmpIntervalMs=100;
 Mpu6050Reader mpu(Wire);
 Adafruit_BMP280 bmp(&Wire);
@@ -41,11 +43,21 @@ uint32_t lastSampleUs=0, lastTelemetryMs=0, lastBmpMs=0, lastRetryMs=0, lastProg
 String commandBuffer;
 bool discardCommand=false;
 uint32_t lastLoRaSendMs=0;
+uint32_t lastLoRaReportMs=0;
 uint32_t loraSentPackets=0;
-radio::BusyWarning loraBusyWarning;
-bool fireArmed=false;
-bool fireLatched=false;
-uint32_t fireStartMs=0;
+sensor_telemetry::AverageWindow radioAverage;
+gpio19::CommandBuffer radioCommands;
+gpio19::OutputLink gpioOutput;
+gpio19::PulseOutput pulseOutput;
+void readRadioCommands() {
+    const bool receiving=radio::canReceive(millis());
+    if (!receiving) radioCommands.reset();
+    while (radio::port().available()) {
+        const char c=static_cast<char>(radio::port().read());
+        if (receiving && radioCommands.push(c))
+            gpioOutput.receive(radioCommands.line(),[](uint32_t ms) { return pulseOutput.apply(ms); });
+    }
+}
 
 bool present(uint8_t address) {
     Wire.beginTransmission(address);
@@ -53,7 +65,7 @@ bool present(uint8_t address) {
 }
 void printVec(const imu::Vec& value) { Serial.printf("[%.5f,%.5f,%.5f]",value[0],value[1],value[2]); }
 void printState() {
-    Serial.printf("IMU_STATE:{\"firmware\":\"imu3d-v2\",\"calibrated\":%s,\"referenceSet\":%s,\"imuReady\":%s,\"noseAxis\":%d,\"rightAxis\":%d,\"profile\":",
+    Serial.printf("IMU_STATE:{\"firmware\":\"imu3d-v2\",\"orientationFrame\":\"RFU\",\"calibrated\":%s,\"referenceSet\":%s,\"imuReady\":%s,\"noseAxis\":%d,\"rightAxis\":%d,\"profile\":",
         calibrated?"true":"false",referenceSet?"true":"false",imuValid?"true":"false",noseAxis,rightAxis);
     if (!calibrated) Serial.print("null");
     else {
@@ -120,6 +132,7 @@ void saveProfile() {
     storage.end();
     if (!saved) { Serial.println("CALIBRATION_ERROR:Gagal menyimpan profil; profil lama dipertahankan"); return; }
     profile=next; calibrated=true; hasLastReference=false;
+    radioAverage.reset(); // A new profile must start a new averaging window.
     calibration.cancel(); filter.reset(); referenceSet=false;
     Serial.println("CALIBRATION_COMPLETE:Enam posisi tersimpan di ESP32");
     printState(); printProgress();
@@ -134,6 +147,7 @@ void resetCalibration() {
         reference=imu::Quaternion{}; referenceSet=false;
     }
     if (result==imu::EraseCalibrationResult::Done) {
+        radioAverage.reset();
         profile=imu::CalibrationProfile{}; calibrated=false;
         calibration.staged=imu::CalibrationProfile{};
         filter.reset();
@@ -183,25 +197,8 @@ void initSensors() {
     }
 }
 void command(const String& input) {
-    if (input=="FIRE_STATUS") {
-        Serial.printf("FIRE_STATUS:{\"armed\":%s,\"latched\":%s,\"output\":%s,\"pin\":%d}\n",
-            fireArmed?"true":"false",fireLatched?"true":"false",digitalRead(kFireMosfetPin)?"true":"false",kFireMosfetPin);
-    } else if (input=="ARM_SYSTEM") {
-        if (fireLatched) Serial.println("ARM_ERROR:Sistem sudah ditembakkan; gunakan RESET_FIRE untuk me-reset status");
-        else { fireArmed=true; digitalWrite(kFireMosfetPin,LOW); Serial.println("ARM_ACK:Sistem fire siap"); }
-    } else if (input=="DISARM_SYSTEM") {
-        fireArmed=false; digitalWrite(kFireMosfetPin,LOW); Serial.println("DISARM_ACK:Sistem fire aman");
-    } else if (input=="RESET_FIRE") {
-        fireArmed=false; fireLatched=false; fireStartMs=0; digitalWrite(kFireMosfetPin,LOW);
-        Serial.println("RESET_FIRE_ACK:Fire state kembali SAFE");
-    } else if (input=="FIRE") {
-        if (!fireArmed) Serial.println("FIRE_ERROR:Sistem belum ARM");
-        else if (fireLatched) Serial.println("FIRE_ERROR:Fire sudah dilakukan sekali");
-        else {
-            fireLatched=true; fireArmed=false; fireStartMs=millis(); digitalWrite(kFireMosfetPin,HIGH);
-            Serial.printf("FIRE_ACK:MOSFET GPIO%d ON selama %lu ms\n",kFireMosfetPin,static_cast<unsigned long>(kFirePulseMs));
-        }
-    } else if (input=="IMU_STATUS") { printState(); printProgress(); }
+    if (radio::handleUsbCommand(input.c_str(),millis())) return;
+    if (input=="IMU_STATUS") { printState(); printProgress(); }
     else if (input=="CALIBRATE_START") {
         if (!imuValid) { Serial.println("CALIBRATION_ERROR:MPU6050 belum memberikan data valid"); return; }
         calibration.start(); referenceSet=false;
@@ -279,6 +276,7 @@ void sampleImu(uint32_t nowUs) {
     if (status!=Mpu6050Reader::Status::Ok) {
         Serial.printf("MPU6050: %s\n",Mpu6050Reader::message(status)); diagnostics();
         imuValid=false; mpuReady=false; referenceSet=false; filter.reset();
+        radioAverage.reset(); // Do not send a stale window after sensor recovery.
         if (calibration.active) { calibration.cancel(); Serial.println("CALIBRATION_ERROR:Sesi dibatalkan karena pembacaan MPU gagal; profil lama tetap tersimpan"); printProgress(); }
         lastRetryMs=millis(); printState(); return;
     }
@@ -294,6 +292,13 @@ void sampleImu(uint32_t nowUs) {
     }
     accel=calibrated?imu::corrected_accel(profile,rawAccel):rawAccel;
     gyro=calibrated?imu::corrected_gyro(profile,rawGyro):rawGyro;
+    sensor_telemetry::Sample radioSample;
+    radioSample.timestampMs=lastValidMs;
+    radioSample.temperatureC=temperature;
+    radioSample.accel=accel;
+    radioSample.gyro=gyro;
+    radioSample.calibrated=calibrated;
+    radioAverage.addImu(radioSample);
     if (dt>0.5F) { filter.reset(); referenceSet=false; }
     const float elapsed=dt<=0.5F?dt:0.01F;
     const int steps=static_cast<int>(std::ceil(elapsed/0.01F));
@@ -308,41 +313,40 @@ void readBmp() {
     if (!present(bmpAddress)) { bmpReady=false; pressure=NAN; return; }
     bmpTemperature=bmp.readTemperature(); pressure=bmp.readPressure()/100.0F;
     if (!std::isfinite(bmpTemperature) || !std::isfinite(pressure) || pressure<=0) { bmpReady=false; pressure=NAN; }
+    else radioAverage.addPressure(pressure); // Count each fresh BMP read once.
+}
+void reportLoRaWait(const char* message,uint32_t now) {
+    if (now-lastLoRaReportMs<radio::kTelemetryIntervalMs) return;
+    lastLoRaReportMs=now;
+    Serial.println(message);
 }
 void serviceLoRa(uint32_t now) {
-    const bool radioReady=radio::readyToSend(now);
-    if (loraBusyWarning.update(radioReady,now))
-        Serial.println("# LORA E22 AUX belum siap selama >=5000ms; periksa AUX=GPIO23, M0/M1=GND dan catu");
-    if (!radioReady) return;
+    if (!radio::readyToSend(now)) return;
     if (now-lastLoRaSendMs<radio::kTelemetryIntervalMs) return;
-    lastLoRaSendMs=now;
     if (!imuValid || now-lastValidMs>200) {
-        Serial.println("# E22 SENSOR TX menunggu sampel MPU6050 valid; periksa sensor pada transmitter");
+        reportLoRaWait("# E32 SENSOR TX menunggu sampel MPU6050 valid; periksa sensor pada transmitter",now);
         return;
     }
 
-    // A complete JSON line fits in the E22 buffer; the module automatically
-    // splits it into RF packets. USB telemetry/calibration remain independent.
+    // Sampling continues while AUX/mode/interval gates transmission. Keep the
+    // entire window on encoding/write failure and extend it with future reads.
     char payload[radio::kMaxFrameBytes+1];
-    sensor_telemetry::Sample sample;
-    sample.timestampMs=now;
-    sample.temperatureC=temperature;
-    sample.pressureHpa=pressure;
-    sample.accel={{accel[0],accel[1],accel[2]}};
-    sample.gyro={{gyro[0],gyro[1],gyro[2]}};
-    sample.calibrated=calibrated;
-    const size_t length=sensor_telemetry::encodeLine(sample,payload,sizeof(payload));
-    if (length==0) {
-        Serial.println("# E22 SENSOR TX sampel tidak finite atau frame terlalu panjang; tidak dikirim");
-        return;
-    }
-    if (radio::sendLine(payload,length,now)) {
+    const uint32_t imuSamples=radioAverage.imuCount();
+    const uint32_t pressureSamples=radioAverage.pressureCount();
+    const uint32_t windowMs=radioAverage.durationMs(now);
+    const auto result=radioAverage.send(now,payload,sizeof(payload),
+        [now](const char* line,std::size_t length) { return radio::sendLine(line,length,now); });
+    if (result==sensor_telemetry::AverageWindow::SendResult::Sent) {
+        lastLoRaSendMs=now;
         ++loraSentPackets;
-        Serial.printf("# E22 SENSOR TX packet=%lu bytes=%u imu=OK baro=%s | UART lokal, bukan ACK\n",
-            static_cast<unsigned long>(loraSentPackets),static_cast<unsigned int>(length),
-            std::isfinite(pressure) && pressure>0?"OK":"UNAVAILABLE");
-    } else
-        Serial.println("# LORA E22 UART sibuk/gagal; sampel dilewati");
+        Serial.printf("# E32 SENSOR TX packet=%lu bytes=%u imu=OK baro=%s average=ON imu_samples=%lu pressure_samples=%lu window_ms=%lu | UART lokal, bukan ACK\n",
+            static_cast<unsigned long>(loraSentPackets),static_cast<unsigned int>(std::strlen(payload)),
+            pressureSamples?"OK":"UNAVAILABLE",static_cast<unsigned long>(imuSamples),
+            static_cast<unsigned long>(pressureSamples),static_cast<unsigned long>(windowMs));
+    } else if (result==sensor_telemetry::AverageWindow::SendResult::EncodingFailed)
+        reportLoRaWait("# E32 SENSOR TX frame rata-rata terlalu panjang/tidak valid; akumulasi dipertahankan",now);
+    else if (result==sensor_telemetry::AverageWindow::SendResult::WriteFailed)
+        reportLoRaWait("# LORA E32 UART sibuk/gagal; akumulasi dipertahankan untuk kiriman berikutnya",now);
 }
 void telemetry(uint32_t now) {
     imu::Quaternion relative;
@@ -358,36 +362,45 @@ void telemetry(uint32_t now) {
         accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2],imuValid?"true":"false",calibrated?"true":"false",referenceSet?"true":"false");
     if (orientationValid) Serial.printf("[%.7f,%.7f,%.7f,%.7f]",relative.w,relative.x,relative.y,relative.z);
     else Serial.print("null");
+    Serial.print(",\"orientationFrame\":\"RFU\"");
     Serial.println('}');
 }
 } // namespace
 
 void setup() {
-    pinMode(kFireMosfetPin,OUTPUT);
-    digitalWrite(kFireMosfetPin,LOW);
+    board::beginControls();
+    const bool pulseReady=pulseOutput.begin();
+    radio::begin();
     Serial.setTxBufferSize(2048);
     Serial.begin(115200); delay(500); commandBuffer.reserve(80);
+    if (!pulseReady) Serial.println("# D19 timer unavailable; pulses rejected, LOW/Reset remains available");
+#ifdef UART_DIRECT_TEST
+    static_assert(!radio::kUseAux, "Direct UART test must not depend on AUX");
+    Serial.println("# UART_DIRECT_TEST ROLE=TX | AUX=unused | GPIO17 TX -> GPIO16 RX + GND | MPU tetap dibaca");
+#endif
     Serial.println("\nFirmware: imu3d-v2 | MPU6050 + BMP280 | SDA=D21 SCL=D22");
+    Serial.printf("# GPIO map TX | CALIBRATION=13 reserved | POP_TEST_IN=%d (-1=disabled) | POP_TEST_OUT=19 LOW | AUX_GPIO=%d\n",board::kPopTestInputPin,radio::kAuxPin);
     if (!Wire.begin(kSdaPin,kSclPin,100000)) { Serial.println("MPU6050: Gagal membuka bus I2C"); while (true) delay(1000); }
     Wire.setTimeOut(20); loadProfile(); initSensors(); printState(); printProgress();
-    radio::begin();
-    Serial.println("# E22 SENSOR TELEMETRY ROLE=TX | MPU6050 + BMP280 | JSON sensor melalui radio");
-    Serial.println("# LORA E22 UART siap | baud=9600 RX=16 TX=17 AUX=23 | M0=M1=GND | interval=2000ms");
-    Serial.println("# LORA E22-400T30D memakai konfigurasi tersimpan: transparent 9600 8N1, RSSI byte OFF; alamat/NETID/channel/air rate/key harus cocok");
+    Serial.println("# E32-433T30D SENSOR TELEMETRY ROLE=TX | MPU6050 + BMP280 | JSON sensor melalui radio");
+    Serial.printf("# LORA E32-433T30D UART siap | baud=9600 RX=16 TX=17 M0=%d M1=%d AUX=%s AUX_GPIO=%d | interval=2000ms\n",radio::kM0Pin,radio::kM1Pin,radio::kUseAux?"enabled":"unused",radio::kAuxPin);
+    Serial.println("# LORA averaging=ON | suhu/accel/gyro tiap baca IMU, tekanan tiap baca BMP | window sampai UART menerima frame lengkap");
+    Serial.println("# D19 radio pulse: 1..10000ms, default GCS 200ms; duration=0 drives LOW; ACK prioritized over telemetry");
+    Serial.println("# LORA mode lewat LORA_MODE:NORMAL|WAKEUP|POWER_SAVING|CONFIG|SLEEP; cek LORA_STATUS; tanpa AUX memakai guard waktu");
+    Serial.println("# Terminal M0/M1: LORA_PINS:0,0 | ketik LORA_HELP untuk daftar perintah");
+    Serial.println("# LORA E32-433T30D memakai konfigurasi tersimpan: transparent 9600 8N1; alamat/channel/air rate/FEC harus cocok dengan RX E32");
     lastSampleUs=micros(); lastRetryMs=millis();
 }
 void loop() {
+    readRadioCommands();
     const uint32_t nowUs=micros();
     if (static_cast<uint32_t>(nowUs-lastSampleUs)>=kSampleIntervalUs) sampleImu(nowUs);
     serialCommands();
     const uint32_t now=millis();
     if (now-lastBmpMs>=kBmpIntervalMs) { lastBmpMs=now; readBmp(); }
-    serviceLoRa(now);
-    if (fireStartMs!=0 && static_cast<uint32_t>(now-fireStartMs)>=kFirePulseMs) {
-        digitalWrite(kFireMosfetPin,LOW);
-        fireStartMs=0;
-        Serial.println("FIRE_COMPLETE:MOSFET OFF; pulse selesai");
-    }
+    const bool responding=gpioOutput.pending();
+    gpioOutput.service(now);
+    if (!responding) serviceLoRa(now);
     if (now-lastTelemetryMs>=kTelemetryIntervalMs) { lastTelemetryMs=now; telemetry(now); }
     if ((!mpuReady || !bmpReady) && now-lastRetryMs>=5000) {
         lastRetryMs=now; initSensors(); printState();

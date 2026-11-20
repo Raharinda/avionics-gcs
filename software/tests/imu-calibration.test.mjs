@@ -205,6 +205,11 @@ test('cancel stays visible and enabled while awaiting device status, with mounti
   assert.doesNotMatch(cancelButton(html), /disabled/);
   assert.doesNotMatch(html, /Pemasangan|Sumbu sensor ke hidung|Sumbu sensor ke kanan/);
   assert.match(html, /2\. Tetapkan pose nol/);
+  assert.match(html, /\+X kanan, \+Y depan, \+Z atas/);
+  assert.match(html, /arah depan papan diputar menghadap langit/);
+  assert.match(html, /\+Y · depan/);
+  assert.match(html, /Hadapkan sisi bawah ke atas/);
+  assert.match(html, /class="selected[^"]*"[^>]*><b>\+Z · atas/);
   await h.value.cancel();
   assert.match(cancelButton(render(true)), /disabled/);
   assert.match(render(true), /Menghapus kalibrasi…/);

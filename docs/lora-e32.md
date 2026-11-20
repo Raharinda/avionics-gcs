@@ -1,147 +1,190 @@
-> **ARSIP E32 — tidak berlaku untuk modul fisik E22-400T30D pengguna.**
-> Firmware aktif dan panduan sudah diperbaiki untuk E22. Ikuti
-> [panduan E22](lora-e22.md). Instruksi M0/M1 konfigurasi dan perintah E32
-> di bawah tidak boleh dipakai untuk E22. E22: M0=GND, M1=3V3 dan `C1 00 09`.
+# Transmitter dan receiver ESP32 + Ebyte E32-433T30D
 
-# Transmitter dan receiver ESP32 + Ebyte E32-433T20D
+Firmware aktif menargetkan **E32-433T30D** pada kedua sisi:
+[TX avionics](../hardware/avionics/firmware/README.md) dan
+[RX GCS](../hardware/gcs/firmware/README.md). Driver dan perintah mode bersama
+berada di `hardware/shared/e32_radio.h` dan `e32_commands.h`.
+Pasang modul fisik E32-433T30D pada TX dan RX; mengganti firmware ESP32 tidak
+mengubah modul E22 menjadi E32.
 
-Firmware aktif berada di `hardware/avionics/firmware`. Modul yang ditargetkan
-adalah **E32-433T20D**, mengikuti
-[manual lokal](E32-433T20D_UserManual_EN_v1.1_fr.pdf). Contoh RYLR998 lama tidak
-berlaku untuk modul ini.
+Acuan perangkat: [manual Ebyte E32-433T30D](https://fixaj.com/wp-content/uploads/2021/08/E32-433T30D_Usermanual_EN_v1.91.pdf).
+Panduan lama E32-433T20D dengan AUX GPIO23 tidak berlaku untuk konfigurasi ini.
 
-Untuk menguji perangkat E22 yang digunakan proyek ini, ikuti
-[panduan telemetri sensor E22](lora-e22.md). Transmitter berada di
-`hardware/avionics/firmware`, receiver di `hardware/gcs/firmware`.
+## Wiring dan profil
 
-## Wiring transmitter
-
-Matikan daya saat mengubah sambungan, lalu gunakan:
-
-| E32 | ESP32 klasik |
+| E32 (TX maupun RX) | ESP32 |
 | --- | --- |
-| M0 | GND |
-| M1 | GND |
-| RXD | GPIO 17 (TX UART2) |
-| TXD | GPIO 16 (RX UART2) |
-| AUX | GPIO 23 (input) |
-| VCC | Catu 3,3 V stabil untuk pengujian pengguna |
-| GND | GND bersama ESP32 dan sensor |
+| TXD | GPIO16 / RX2 |
+| RXD | GPIO17 / TX2 |
+| M0 | GPIO25 |
+| M1 | GPIO26 |
+| AUX | **GPIO27 / D27 pada TX dan RX (aktif)** |
+| VCC | Catu 5 V stabil; batas modul 3,3–5,2 V |
+| GND | GND bersama |
 
-MPU6050 dan BMP280 tetap memakai SDA GPIO 21, SCL GPIO 22, dan catu breakout
-yang sesuai. M0/M1 tidak boleh mengambang. UART dan AUX tetap berlevel logika
-3,3 V. Catu uji 3,3 V tidak mengubah konfigurasi firmware; kestabilan dan
-kemampuan arus regulator tetap perlu diperiksa pada perangkat.
+Sesuai koreksi wiring terbaru, AUX TX dan RX sama-sama GPIO27/D27.
+TX memakai `-DE32_AUX_PIN=27`; POP_TEST_IN TX tetap dinonaktifkan.
+Untuk pengujian tanpa AUX, gunakan `-DE32_AUX_PIN=-1`. Mode ini memakai guard
+waktu tanpa memverifikasi kesiapan modul, dan tidak memperbaiki catu tidak stabil.
 
-## Konfigurasi dan perilaku
+UART/AUX memakai logika 3,3 V. Jangan sambungkan M0/M1 ke GND langsung ketika
+masih dikendalikan GPIO. Untuk M0/M1 yang langsung ke GND, lepaskan kabel
+GPIO25/26 dan gunakan hanya NORMAL tetap, tanpa perintah pergantian mode. NORMAL saat boot berarti M0=M1=LOW. UART modul:
+9600 8N1; USB: 115200. Firmware memakai parameter radio yang telah disimpan,
+tanpa menulisnya ulang. Cocokkan alamat/channel/air rate/FEC dan mode transparan
+pada dua modul E32. Profil acuan: alamat 0x0000, channel 0x17 (433 MHz),
+air rate 2,4 kbps.
 
-- USB ESP32 ↔ laptop: **115200 baud**.
-- UART2 ESP32 ↔ E32: **9600 baud, 8N1**.
-- M0=M1=LOW memilih mode normal; modul harus sudah memakai transmisi transparan.
-- Alamat/channel/air rate/daya/FEC modul **tidak ditulis ulang oleh firmware**.
-  Default manual adalah alamat `0x0000`, channel `0x17` (433 MHz), air rate
-  2,4 kbps. Pastikan konfigurasi kedua modul cocok sebelum menguji link.
-- Tidak ada perintah AT dan tidak ada header `AT+SEND`/`+RCV`.
-- IMU tetap dibaca dengan target 100 Hz, BMP280 10 Hz, USB telemetry 10 Hz.
-- Pengiriman radio mencoba sampel terbaru setiap **2 detik**, hanya ketika
-  AUX HIGH stabil minimal 2 ms dan buffer UART cukup. Pemeriksaan ini tidak
-  menunggu secara blocking di loop IMU.
-- Selama AUX LOW, pengiriman ditunda. Jika kembali HIGH, pengiriman dapat
-  dilanjutkan tanpa reset ESP32. AUX yang lepas/tersambung salah bukan deteksi
-  modul yang dapat diandalkan; firmware tidak dapat memverifikasi mode/frekuensi.
-- Satu frame JSON sensor diakhiri newline. Batas aplikasi 240 byte termasuk
-  newline; E32 memiliki buffer 512 byte dan otomatis memecah paket RF 58 byte.
-- Sampel MPU tidak valid/kedaluwarsa tidak dikirim. Barometer yang gagal
-  menghasilkan `pressure:null`, sehingga data IMU tetap dapat diterima backend.
-- Quaternion, status/profil kalibrasi, dan command dari receiver belum dikirim
-  lewat radio. Fitur USB langsung ke transmitter tetap tersedia.
+Mode E32 berbeda dari E22: `LORA_MODE:CONFIG` dan `SLEEP` memilih M0=M1=HIGH;
+M0=LOW, M1=HIGH adalah `POWER_SAVING` (alias `WOR`), yang memerlukan TX dalam
+mode `WAKEUP` (M0=HIGH, M1=LOW). `LORA_HELP` menjelaskan semua pilihan.
+Pemilihan CONFIG tidak otomatis membaca/menulis register modul. Pengiriman
+sensor otomatis pada firmware TX hanya berjalan di NORMAL; gunakan NORMAL
+pada kedua node untuk uji telemetri ini.
 
-## Build dan flash
-
-Dari root repository:
+## Build dan uji
 
 ```bash
-cd hardware/avionics/firmware
-./firmware.sh build
-./firmware.sh ports
+./hardware/telemetry.sh build
+./hardware/telemetry.sh flash tx /dev/ttyACM0
+./hardware/telemetry.sh monitor tx /dev/ttyACM0
+./hardware/telemetry.sh flash rx /dev/ttyUSB0
+./hardware/telemetry.sh monitor rx /dev/ttyUSB0
 ```
 
-Hubungkan ESP32 transmitter. Tutup koneksi Tauri dan Serial Monitor yang sedang
-memakai port tersebut, lalu ganti contoh port di bawah sesuai hasil deteksi:
+Sesuaikan port masing-masing ESP32 dan tutup monitor sebelum flash. TX
+menampilkan `E32-433T30D SENSOR TELEMETRY ROLE=TX` serta
+`# E32 SENSOR TX packet=...` ketika sampel sensor dimasukkan ke UART radio,
+sekitar setiap 2 detik. Log TX bukan ACK dari receiver.
+Nilai numerik radio adalah rata-rata jendela pembacaan sejak kiriman lokal
+berhasil sebelumnya: suhu dan accel/gyro pada laju IMU, tekanan pada laju
+BMP dengan penghitung terpisah. AUX LOW/mode sibuk memperpanjang jendela;
+encode atau penulisan UART gagal mempertahankan akumulasi. Log TX menambahkan
+`average=ON imu_samples=... pressure_samples=... window_ms=...`.
+`timestampMs` menandai akhir jendela. USB langsung dan filter orientasi tetap
+memakai sampel langsung. Perubahan ini merangkum pembacaan dan tidak menjamin
+setiap nilai asli atau paket radio dapat dipulihkan. Detail ada di
+[firmware TX](../hardware/avionics/firmware/README.md).
+Startup RX menampilkan `E32-433T30D SENSOR TELEMETRY ROLE=RX`.
+Receiver mengumpulkan fragmen UART sampai newline, lalu meneruskan JSON sensor
+ke USB. AUX LOW selama UART mengeluarkan data tetap diterima. Monitor mencetak
+`# E32 RX frame=...` dan status setiap 10 detik. Matikan/hidupkan TX untuk
+memastikan frame benar berasal dari link radio.
+
+Tutup monitor sebelum memilih port receiver pada dashboard Tauri. Kalibrasi
+dan acuan 3D tetap melalui USB langsung ke transmitter.
 
 ```bash
-./firmware.sh flash /dev/ttyUSB0
-./firmware.sh monitor /dev/ttyUSB0
+./hardware/telemetry.sh test
 ```
 
-Jika upload tertahan di `Connecting...`, tahan BOOT dan lepaskan ketika mulai
-menulis flash. Jika output awal terlewat, tekan EN/RESET setelah monitor dibuka.
+Tes host memeriksa framing JSON serta pemetaan mode dan transisi E32 dengan
+AUX aktif/nonaktif. Build dan tes host belum membuktikan link RF pada perangkat.
 
-Startup menampilkan:
+## Setup parameter E32 lewat ESP32
+
+`setup` memasang firmware konfigurator sementara pada ESP32, lalu ESP32
+menulis parameter tersimpan E32 lewat UART. Firmware internal E32 tidak
+diganti. Gunakan mode ini pada **kedua modul E32-433T30D** untuk menyamakan
+profil. Profil identik untuk TX dan RX:
 
 ```text
-# LORA E32 UART siap | baud=9600 RX=16 TX=17 AUX=23 | M0=M1=GND | interval=2000ms
-# LORA E32 memakai konfigurasi modul tersimpan: harus transparent 9600 8N1; default 433MHz
+C0 00 00 1A 17 44
 ```
 
-Jika sampel IMU valid dan AUX siap, sekitar setiap 2 detik muncul:
+Alamat `0x0000`, channel `0x17` (433 MHz), UART 9600 8N1, air rate 2,4 kbps,
+transmisi transparan, FEC ON, output TXD/AUX push-pull dan daya 30 dBm.
+Format perintah merujuk bagian 6.5 dan 7 pada
+[manual E32-433T30D](https://fixaj.com/wp-content/uploads/2021/08/E32-433T30D_Usermanual_EN_v1.91.pdf).
+
+**Matikan daya saat mengubah wiring. Untuk setup, lepaskan M0/M1 dari GND
+langsung**, kemudian sambungkan seperti [gambar GPIO terbaru](gpioesp32.jpeg):
+
+| Pin E32 | ESP32 yang terhubung ke modul itu |
+| --- | --- |
+| M0 | GPIO25 / D25 |
+| M1 | GPIO26 / D26 |
+| AUX | GPIO27 / D27 |
+| TXD | GPIO16 / RX2 |
+| RXD | GPIO17 / TX2 |
+| GND | GND bersama ESP32 dan catu modul |
+
+Pakai catu modul 5 V stabil dengan kapasitas arus yang memadai; logika
+UART/M0/M1/AUX tetap 3,3 V. MPU boleh tetap terpasang; konfigurator tidak
+membutuhkan atau membaca sensor. Lepaskan jumper UART langsung antar-ESP32
+sebelum menghubungkan kembali TXD/RXD modul.
+
+Tutup monitor yang sedang memakai port tersebut. Dari root repository:
+
+```bash
+./hardware/telemetry.sh setup tx /dev/ttyACM0
+```
+
+Perintah melakukan upload ke ESP32 TX dan membuka monitor otomatis. Bila
+startup terlewat, tekan EN/RESET. Konfigurator memilih mode 3 (M0=M1=HIGH),
+membaca parameter dengan `C1 C1 C1`, menyimpan profil dengan `C0` hanya jika
+berbeda, lalu membaca ulang respons 6 byte. Respons salah/tidak ada atau
+readback berbeda menghasilkan ERROR, bukan sukses. Semua penantian memiliki
+timeout. Setelah readback cocok, pin dikembalikan ke NORMAL dan muncul:
 
 ```text
-# LORA E32 TX UART bytes=... | bukan ACK receiver
+# E32_SETUP READ C0 00 00 1A 17 44
+# E32_SETUP SUCCESS | READBACK cocok | NORMAL M0=0 M1=0
 ```
 
-Log tersebut membuktikan frame dimasukkan ke UART ESP32, bukan penerimaan oleh
-receiver. Konfirmasi radio hanya bisa dilakukan dari data yang benar-benar tiba
-pada receiver. AUX LOW sesaat selama transmisi adalah kondisi normal. Pesan
-`AUX belum siap selama >=5000ms` hanya muncul setelah AUX tidak siap
-terus-menerus selama 5 detik, lalu diulang setiap 5 detik jika belum pulih.
-Begitu AUX siap, waktu tunggu direset. USB telemetry dan sensor tetap berjalan.
-
-## Receiver dan uji radio
-
-Receiver harus memakai E32 dengan konfigurasi radio yang cocok, UART 9600,
-M0/M1 LOW, dan meneruskan JSON yang diterima ke USB 115200. Data diterima
-langsung, bukan dalam wrapper `+RCV`. Kumpulkan stream sampai newline dengan
-buffer terbatas; jangan menganggap satu pembacaan UART atau satu paket RF
-sebagai satu JSON utuh. Jeda antarfragmen bukan akhir frame.
-
-Firmware receiver E32 tersedia di `hardware/gcs/firmware`. Firmware receiver
-lama untuk RYLR998 tidak kompatibel. Wiring E32 receiver memakai GPIO 16/17
-untuk UART dan GPIO 23 untuk AUX, dengan M0/M1 terhubung ke GND.
-
-Colok receiver ke laptop, identifikasi portnya, lalu:
+Keluar dengan Ctrl+C, lalu lakukan hal yang sama pada receiver:
 
 ```bash
-cd hardware/gcs/firmware
-./firmware.sh build
-./firmware.sh ports
-./firmware.sh flash /dev/ttyUSB0
-./firmware.sh monitor /dev/ttyUSB0
+./hardware/telemetry.sh setup rx /dev/ttyUSB0
 ```
 
-Ganti port sesuai board receiver. Nyalakan transmitter dari sumber daya
-terpisah dan periksa JSON sensor serta `# E32 RX frame=...` di monitor
-receiver. Gerakkan transmitter untuk mengubah pembacaan. Matikan transmitter:
-setelah sisa data tiba, frame baru harus berhenti; hidupkan lagi untuk memeriksa
-pemulihan link. Status receiver tetap dicetak setiap 10 detik.
+Sesuaikan port. Konfigurator berjalan sekali per boot, tidak terus menulis
+parameter. Jika profil sudah cocok, penulisan persisten dilewati. Jika gagal,
+perbaiki wiring/catu lalu reset; jangan menganggap konfigurasi tersimpan telah
+berhasil hanya karena upload firmware ESP32 selesai.
 
-Setelah JSON terbukti tiba melalui radio, tutup monitor receiver dan buka
-aplikasi Tauri. Pilih port receiver dan Start. Jangan memakai Dummy Data atau
-USB transmitter untuk membuktikan jalur radio. Kalibrasi dan 3D melalui radio
-belum tersedia; receiver menjelaskan keterbatasan tersebut ketika menerima
-command kalibrasi dari USB.
-
-Lihat [README receiver](../hardware/gcs/firmware/README.md) untuk wiring,
-diagnostik byte/frame/AUX, dan petunjuk pengujian lengkap.
-
-## Verifikasi tanpa perangkat
+Setelah **kedua modul** menampilkan SUCCESS, keluar dari monitor dan pasang
+kembali firmware telemetri (parameter E32 tetap tersimpan):
 
 ```bash
-./test-host.sh
+./hardware/telemetry.sh flash tx /dev/ttyACM0
+./hardware/telemetry.sh flash rx /dev/ttyUSB0
+./hardware/telemetry.sh monitor rx /dev/ttyUSB0
 ```
 
-Selain driver/kalibrasi yang sudah ada, tes E32 memeriksa pemetaan UART/AUX,
-penantian HIGH stabil dan pemulihan setelah LOW, rollover `millis`, pengiriman
-JSON+newline tanpa wrapper, penolakan frame berlebih/tidak lengkap, dan penundaan
-saat UART penuh. Tes ini memakai stub, sehingga tidak menggantikan pengujian
-catu, timing dan transmisi radio pada perangkat fisik.
+M0/M1 boleh kembali ke GND untuk NORMAL tetap setelah setup, asalkan dilepas
+dari GPIO25/26 dan tidak memakai perintah pergantian mode. Build konfigurator
+saja tanpa upload: `./hardware/telemetry.sh build-setup`.
+
+## Tes UART kabel langsung dengan MPU
+
+Gunakan ini untuk memisahkan pemeriksaan ESP32/UART dari link RF. Pada build
+radio biasa, melepas AUX dapat menahan pengiriman TX meskipun JSON sensor USB
+terus muncul. Build `uart_direct` mengabaikan AUX di kedua node, tetap membaca
+MPU pada TX, dan meneruskan JSON ke UART2 9600 setiap sekitar 2 detik.
+
+Matikan daya sebelum mengubah sambungan. Lepaskan GPIO17 TX dari RXD modul
+LoRa TX dan GPIO16 RX dari TXD modul LoRa RX. Sambungkan langsung **GPIO17
+ESP32 TX ke GPIO16 ESP32 RX**, serta **GND kedua ESP32**. Kabel MPU (SDA21/SCL22)
+tetap terpasang pada TX. Modul LoRa dan AUX tidak diperlukan untuk tes ini.
+
+Tutup monitor, lalu dari root repository:
+
+```bash
+./hardware/telemetry.sh flash-direct tx /dev/ttyACM0
+./hardware/telemetry.sh flash-direct rx /dev/ttyUSB0
+./hardware/telemetry.sh monitor rx /dev/ttyUSB0
+```
+
+Sesuaikan port dan biarkan kedua ESP32 tetap menyala bersamaan. Setelah reset,
+startup menampilkan `UART_DIRECT_TEST ROLE=TX` atau `ROLE=RX` dan `AUX=unused`.
+TX harus mencetak `# E32 SENSOR TX packet=...`, sedangkan RX harus menerima
+JSON dan penghitung byte/frame bertambah. Hasil tes ini memverifikasi jalur
+kabel, bukan transmisi radio. Jika RX tetap 0 byte, periksa kabel jumper,
+GND bersama, pin, daya dan identitas board. Jika byte masuk tanpa frame lengkap,
+periksa kestabilan sinyal dan baud.
+
+Setelah pengujian, matikan daya, kembalikan wiring radio, lalu gunakan
+`./hardware/telemetry.sh flash tx PORT_TX` dan `flash rx PORT_RX` untuk
+memasang kembali build radio biasa dengan AUX GPIO27. Perintah `build-direct`
+membangun tes kabel tanpa melakukan upload.

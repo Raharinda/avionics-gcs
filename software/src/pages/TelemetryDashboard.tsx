@@ -72,7 +72,10 @@ export function TelemetryDashboard() {
             commands={
                 <CommandPanel
                     commandState={dashboard.commandState}
-                    connectionReady={connection.connectionReady}
+                    commandSent={dashboard.commandSent}
+                    pulseDuration={dashboard.pulseDuration}
+                    onPulseDurationChange={dashboard.setPulseDuration}
+                    connectionReady={dashboard.commandReady}
                     connected={connection.connected}
                     isDarkMode={isDarkMode}
                     hasTelemetry={hasTelemetry}

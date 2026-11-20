@@ -23,6 +23,7 @@ function createHookRuntime() {
   let cursor = 0;
   let timerId = 0;
   const slots = [];
+  const setters = [];
   const effects = [];
   const timeouts = new Map();
   const intervals = new Map();
@@ -31,7 +32,7 @@ function createHookRuntime() {
     useState(initial) {
       const index = cursor++;
       if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
-      return [slots[index], (next) => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }];
+      return [slots[index], setters[index] ??= (next) => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }];
     },
     useRef(initial) {
       const index = cursor++;
@@ -284,7 +285,7 @@ test('TelemetrySensorGrid dynamic domain prevents clipping high temperature, low
   assert.ok(accelDomain[0] < 0.2 && accelDomain[1] > 6.5);
 });
 
-test('AttitudeCard maps model X (roll) to PITCH, model Y (pitch) to ROLL, and model Z (yaw) to YAW', () => {
+test('AttitudeCard follows the local RFU calibration X roll, Y pitch, Z yaw', () => {
   const { AttitudeCard } = load(attitudeCardSource, {
     react: React,
     'react/jsx-runtime': jsxRuntime,
@@ -295,8 +296,8 @@ test('AttitudeCard maps model X (roll) to PITCH, model Y (pitch) to ROLL, and mo
     telemetry: { roll: 30.0, pitch: 45.0, yaw: 12.0 },
   }));
   assert.match(html, /<span>YAW<\/span><b>12\.0°<\/b>/);
-  assert.match(html, /<span>PITCH<\/span><b>30\.0°<\/b>/);
-  assert.match(html, /<span>ROLL<\/span><b>45\.0°<\/b>/);
+  assert.match(html, /<span>PITCH<\/span><b>45\.0°<\/b>/);
+  assert.match(html, /<span>ROLL<\/span><b>30\.0°<\/b>/);
 });
 
 test('CommandPanel timeline does not mark Sending FIRE done while merely armed', () => {
@@ -309,6 +310,7 @@ test('CommandPanel timeline does not mark Sending FIRE done while merely armed',
     connectionReady: true,
     connected: true,
     isDarkMode: false,
+    commandSent: false, pulseDuration: "200", onPulseDurationChange() {},
     hasTelemetry: true,
     latestTelemetry: { imuValid: true, calibrated: true },
     onArm() {}, onDisarm() {}, onFire() {}, onStart() {}, onStop() {}, onRefreshClock() {}, onReset() {}, onToggleTheme() {},
@@ -319,7 +321,7 @@ test('CommandPanel timeline does not mark Sending FIRE done while merely armed',
   assert.match(firingHtml, /<div class="done"><i><\/i>Sending FIRE<\/div>/);
 });
 
-test('useDashboardController cancels fireTimer on reset/stop, isolates new data sources, and ignores E22 probe error in main log', async (t) => {
+test('dashboard uses remote D19 ACK, reset supersedes FIRE, source state is isolated, and dev CSV export is retained', async (t) => {
   const r = createHookRuntime();
   t.after(() => r.dispose());
 
@@ -351,11 +353,26 @@ test('useDashboardController cancels fireTimer on reset/stop, isolates new data 
     ],
   };
 
+  const commands = [];
+  let listener, sequence = 0;
+  const gpioProtocol = load(await compile('../src/data/gpio19Command.ts'), {}, {
+    setTimeout: r.window.setTimeout, clearTimeout: r.window.clearTimeout,
+    crypto: { getRandomValues(array) { array[0] = 1; array[1] = ++sequence; return array; } },
+  });
+  const gpioHook = load(await compile('../src/features/command/hooks/useGpio19Command.ts'), {
+    react: r.react,
+    '@tauri-apps/api/event': { listen: async (_name, cb) => { listener = cb; return () => { listener = null; }; } },
+    '../../../data/gpio19Command': gpioProtocol,
+    '../../../services/serialConnection': { sendSerialCommand: async line => { commands.push(line); } },
+  });
+  const ack = command => listener?.({ payload: { sourcePort: 'COM4', line: command.replace('D19_CMD:', 'D19_ACK:') } });
   const controllerMod = load(dashboardControllerSource, {
     react: r.react,
     '@tauri-apps/api/core': { invoke: async () => '' },
     '../../../data/dummyTelemetry': { DUMMY_SOURCE: 'Dummy data' },
     '../../../services/serialConnection': { sendSerialCommand: async () => {} },
+    '../../command/hooks/useGpio19Command': gpioHook,
+    '../../../data/gpio19Command': gpioProtocol,
     '../../connection/hooks/useSerialConnection': { useSerialConnection: () => mockConnection },
     '../../telemetry/hooks/useTelemetry': { useTelemetry: () => mockTelemetry },
     '../../calibration/hooks/useImuCalibration': { useImuCalibration: () => mockImu },
@@ -363,24 +380,32 @@ test('useDashboardController cancels fireTimer on reset/stop, isolates new data 
 
   const render = () => r.render(() => controllerMod.useDashboardController());
   let state = render();
+  await Promise.resolve();
+  state = render();
 
   // E22 receiver probe error must not pollute the main dashboard status log
   assert.equal(state.log, 'No telemetry data received');
 
-  // Arm, fire, then reset before 1200ms timer fires -> timer must stay cancelled
+  // Reset supersedes FIRE; only the LOW ACK can complete it.
   state.armSystem();
   state = render();
   assert.equal(state.commandState, 'armed');
   state.fireCharge();
   state = render();
   assert.equal(state.commandState, 'firing');
+  const fireRequest = commands.at(-1);
   state.resetCommands();
+  state = render();
+  assert.equal(state.commandState, 'firing');
+  ack(fireRequest);
+  assert.equal(render().commandState, 'firing');
+  ack(commands.at(-1));
   state = render();
   assert.equal(state.commandState, 'safe');
   assert.equal(state.phase, 'Initialization');
   r.flushTimeouts();
   state = render();
-  assert.equal(state.commandState, 'safe', 'cancelled fireTimer must not transition back to complete');
+  assert.equal(state.commandState, 'safe', 'late timer cannot complete the old FIRE');
   assert.equal(state.phase, 'Initialization');
 
   // Arm & fire to complete, then switch to an unseen source -> state must reset cleanly
@@ -388,7 +413,8 @@ test('useDashboardController cancels fireTimer on reset/stop, isolates new data 
   state = render();
   state.fireCharge();
   state = render();
-  r.flushTimeouts();
+  ack(commands.at(-1));
+  render();
   state = render();
   assert.equal(state.commandState, 'complete');
   assert.equal(state.phase, 'Flight');

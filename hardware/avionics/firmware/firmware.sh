@@ -10,6 +10,10 @@ Pemakaian:
   ./firmware.sh flash [PORT]            Build dan flash ke ESP32
   ./firmware.sh monitor [PORT]          Serial Monitor 115200 baud
   ./firmware.sh ports                   Lihat port yang tersedia
+  ./firmware.sh build-direct            Build tes UART kabel tanpa AUX
+  ./firmware.sh flash-direct [PORT]     Flash tes UART kabel tanpa AUX
+  ./firmware.sh build-setup             Build konfigurator E32
+  ./firmware.sh setup [PORT]            Flash konfigurator E32 lalu buka monitor
 
 Contoh: ./firmware.sh flash /dev/ttyUSB0
 EOF
@@ -24,7 +28,7 @@ fi
 action="${1:-help}"
 case "$action" in
     help|-h|--help) usage; exit 0 ;;
-    build|flash|monitor|ports) ;;
+    build|build-direct|build-setup|flash|flash-direct|setup|monitor|ports) ;;
     *) usage >&2; exit 2 ;;
 esac
 
@@ -38,17 +42,32 @@ else
 fi
 
 case "$action" in
-    build)
-        "$pio_bin" run -e esp32dev
-        echo "Firmware: $PWD/.pio/build/esp32dev/firmware.bin"
+    build|build-direct|build-setup)
+        firmware_env=esp32dev
+        if [[ "$action" == build-direct ]]; then firmware_env=uart_direct; fi
+        if [[ "$action" == build-setup ]]; then firmware_env=e32_setup; fi
+        "$pio_bin" run -e "$firmware_env"
+        echo "Firmware: $PWD/.pio/build/$firmware_env/firmware.bin"
         ;;
-    flash)
-        args=(run -e esp32dev --target upload)
+    flash|flash-direct|setup)
+        firmware_env=esp32dev
+        if [[ "$action" == flash-direct ]]; then firmware_env=uart_direct; fi
+        if [[ "$action" == setup ]]; then
+            firmware_env=e32_setup
+            echo "Setup E32: M0=GPIO25 M1=GPIO26 AUX=GPIO27; lepaskan M0/M1 dari GND langsung."
+        fi
+        args=(run -e "$firmware_env" --target upload)
         if [[ -n "${2:-}" ]]; then args+=(--upload-port "$2"); fi
+        if [[ "$action" == setup ]]; then
+            "$pio_bin" "${args[@]}"
+            monitor_args=(device monitor --baud 115200 --eol LF --echo --filter send_on_enter)
+            if [[ -n "${2:-}" ]]; then monitor_args+=(--port "$2"); fi
+            exec "$pio_bin" "${monitor_args[@]}"
+        fi
         exec "$pio_bin" "${args[@]}"
         ;;
     monitor)
-        args=(device monitor --baud 115200)
+        args=(device monitor --baud 115200 --eol LF --echo --filter send_on_enter)
         if [[ -n "${2:-}" ]]; then args+=(--port "$2"); fi
         exec "$pio_bin" "${args[@]}"
         ;;

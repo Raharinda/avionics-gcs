@@ -306,3 +306,23 @@ button { cursor: pointer; border: 0; }
   .serial-log.expanded pre,
   .serial-log-expand .icon { animation: none; transition: none; }
 }
+
+.pulse-duration {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.pulse-duration input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.pulse-duration small { opacity: .7; }
+.status-badge.error { color: #dc2626; }

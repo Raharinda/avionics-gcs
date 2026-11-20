@@ -8,38 +8,29 @@ export type RocketAxis = {
   color: string;
 };
 
+// A fixed parent rotation maps RFU to Three.js: X right, Y forward (-scene Z), Z up.
+export const RFU_TO_SCENE: [number, number, number, number] = [-Math.SQRT1_2, 0, 0, Math.SQRT1_2];
 export const sensorAxisLabel = (axis: number) => `${axis > 0 ? "+" : "−"}${"XYZ"[Math.abs(axis) - 1]}`;
 const validAxis = (axis: number) => Number.isInteger(axis) && Math.abs(axis) >= 1 && Math.abs(axis) <= 3;
 export function validSensorMount(mount?: SensorMount): mount is SensorMount {
   return !!mount && validAxis(mount.noseAxis) && validAxis(mount.rightAxis) && Math.abs(mount.noseAxis) !== Math.abs(mount.rightAxis);
 }
 
-// Columns of the model-to-sensor rotation, used by the fixed sensor-frame preview.
-export function sensorMountBasis(mount?: SensorMount): { right: Vector3; nose: Vector3; third: Vector3 } | null {
+// Columns of the RFU body-to-sensor rotation, inverse of firmware mounting_rotation.
+export function sensorMountBasis(mount?: SensorMount): { right: Vector3; forward: Vector3; up: Vector3 } | null {
   if (!validSensorMount(mount)) return null;
   const unit = (axis: number): Vector3 => [1, 2, 3].map((index) => index === Math.abs(axis) ? Math.sign(axis) : 0) as Vector3;
-  const right = unit(mount.rightAxis), nose = unit(mount.noseAxis);
-  const third: Vector3 = [right[1] * nose[2] - right[2] * nose[1], right[2] * nose[0] - right[0] * nose[2], right[0] * nose[1] - right[1] * nose[0]];
-  return { right, nose, third };
+  const right = unit(mount.rightAxis), up = unit(mount.noseAxis);
+  const forward: Vector3 = [up[1] * right[2] - up[2] * right[1], up[2] * right[0] - up[0] * right[2], up[0] * right[1] - up[1] * right[0]];
+  return { right, forward, up };
 }
 
-// Firmware already sends a quaternion in model coordinates (X right, Y nose).
-// Only label that basis here; applying the mounting rotation again would be wrong.
-export function rocketAxes(mount?: SensorMount): RocketAxis[] {
-  const directions: Vector3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-  if (!validSensorMount(mount)) return [
-    { direction: directions[0], label: "+X model · kanan", angleLabel: "X MODEL", color: "#dd483a" },
-    { direction: directions[1], label: "+Y model · hidung", angleLabel: "Y MODEL", color: "#228c53" },
-    { direction: directions[2], label: "+Z model", angleLabel: "Z MODEL", color: "#356ce0" },
+// Telemetry has already been expressed in the RFU body frame. Sensor mounting
+// must not be applied again to either the live quaternion or the axis arrows.
+export function rocketAxes(_mount?: SensorMount): RocketAxis[] {
+  return [
+    { direction: [1, 0, 0], label: "+X · kanan", angleLabel: "X · KANAN", color: "#dd483a" },
+    { direction: [0, 1, 0], label: "+Y · depan", angleLabel: "Y · DEPAN", color: "#228c53" },
+    { direction: [0, 0, 1], label: "+Z · atas", angleLabel: "Z · ATAS", color: "#356ce0" },
   ];
-  const { third } = sensorMountBasis(mount)!;
-  const index = third.findIndex((value) => value !== 0);
-  const signedThird = (index + 1) * third[index];
-  const roles = ["kanan", "hidung", "sumbu ketiga"];
-  return [mount.rightAxis, mount.noseAxis, signedThird].map((axis, i) => ({
-    direction: directions[i],
-    label: `${sensorAxisLabel(axis)} sensor${i < 2 ? ` · ${roles[i]}` : ""}`,
-    angleLabel: `${roles[i].toUpperCase()} · ${sensorAxisLabel(axis)}`,
-    color: ["#dd483a", "#228c53", "#356ce0"][Math.abs(axis) - 1],
-  }));
 }

@@ -4,6 +4,9 @@ import type { CommandState, TelemetryPoint } from "../../../types/telemetry";
 
 type Props = {
     commandState: CommandState;
+    commandSent: boolean;
+    pulseDuration: string;
+    onPulseDurationChange: (value: string) => void;
     connectionReady: boolean;
     connected: boolean;
     isDarkMode: boolean;
@@ -35,7 +38,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [resetConfirmOpen, healthOpen]);
-    const commandLabel = { safe: "SAFE", armed: "ARMED", firing: "SENDING", complete: "FIRED" }[commandState];
+    const commandLabel = { safe: "SAFE", armed: "ARMED", firing: "SENDING", complete: "FIRED", error: "UNCONFIRMED" }[commandState];
     const healthChecks = [
         { label: "LoRa / Serial port", ok: connectionReady, detail: connectionReady ? "Port is connected and ready" : "Port is disconnected or unavailable" },
         { label: "Telemetry stream", ok: connected && hasTelemetry, detail: connected ? (hasTelemetry ? "Streaming telemetry packets" : "Connected, but no telemetry packet received") : "Telemetry stream is stopped" },
@@ -43,7 +46,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
         { label: "Avionic / IMU", ok: hasTelemetry && latestTelemetry?.imuValid !== false, detail: latestTelemetry?.imuValid === false ? "IMU reported an invalid reading" : (hasTelemetry ? (latestTelemetry?.calibrated ? "IMU is calibrated and valid" : "IMU is valid but not calibrated") : "No IMU reading received") },
     ];
     const failedChecks = healthChecks.filter((check) => !check.ok);
-    const healthLabel = failedChecks.length === 0 ? "No error" : failedChecks.length === 1 ? failedChecks[0].label : `${failedChecks.length} issues`;
+    const healthLabel = commandState === "error" ? "D19 unconfirmed" : failedChecks.length === 0 ? "No error" : failedChecks.length === 1 ? failedChecks[0].label : `${failedChecks.length} issues`;
     return (<aside className="card command-card">
             <div className="section-label">COMMAND</div>
             <div className="card-title-row">
@@ -58,10 +61,16 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
                 <b>Arm system</b>
                 <small>{connectionReady ? "Enable fire controls" : "Connect port first"}</small>
               </div>
-              <button className={`toggle ${commandState !== "safe" ? "on" : ""}`} onClick={commandState === "armed" ? onDisarm : onArm} disabled={!connectionReady || commandState === "firing" || commandState === "complete"} aria-label={commandState === "armed" ? "Disarm system" : "Arm system"}>
+              <button className={`toggle ${commandState === "armed" ? "on" : ""}`} onClick={commandState === "armed" ? onDisarm : onArm} disabled={!connectionReady || (commandState !== "safe" && commandState !== "armed")} aria-label={commandState === "armed" ? "Disarm system" : "Arm system"}>
                 <span />
               </button>
             </div>
+            <label className="pulse-duration">
+              <span>Durasi pulsa D19 (ms)</span>
+              <input type="number" min="1" max="10000" step="1" value={props.pulseDuration}
+                disabled={commandState === "firing"} onChange={event => props.onPulseDurationChange(event.target.value)} />
+              <small>1–10000 ms · otomatis LOW setelah pulsa</small>
+            </label>
             <div className="command-step fire-step">
               <span className="step-number">02</span>
               <div>
@@ -77,11 +86,11 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
                 <i />
                 Sending FIRE
               </div>
-              <div className={commandState === "firing" || commandState === "complete"
+              <div className={props.commandSent
             ? "done"
             : ""}>
                 <i />
-                Sent via serial
+                Sent via LoRa
               </div>
               <div className={commandState === "complete" ? "done" : ""}>
                 <i />
@@ -150,7 +159,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
                 <button type="button" onClick={onRefreshClock}>
                   Refresh UTC
                 </button>
-                <button type="button" onClick={() => setResetConfirmOpen(true)}>
+                <button type="button" onClick={() => setResetConfirmOpen(true)} disabled={!connectionReady}>
                   Reset
                 </button>
                 <button className="theme-toggle" type="button" onClick={onToggleTheme} aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>

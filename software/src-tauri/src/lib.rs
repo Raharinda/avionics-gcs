@@ -73,6 +73,8 @@ struct RawTelemetryMessage {
     reference_set: bool,
     #[serde(default)]
     orientation: Option<[f64; 4]>, // firmware quaternion [w, x, y, z]
+    #[serde(default, rename = "orientationFrame")]
+    orientation_frame: Option<String>,
     #[serde(default)]
     rssi: Option<f64>,
 }
@@ -118,7 +120,7 @@ impl TelemetryMessage {
         let pressure = raw.pressure.filter(|value| value.is_finite() && *value > 0.0);
         let altitude = altitude_reference.read(pressure);
         let orientation = raw.orientation.filter(|_| raw.calibrated && raw.reference_set)
-            .and_then(attitude::normalize_quaternion);
+            .and_then(|q| attitude::normalize_rfu(q, raw.orientation_frame.as_deref()));
         let rssi = raw.rssi.filter(|value| value.is_finite());
         let [roll, pitch, yaw] = orientation.map(attitude::euler_degrees).unwrap_or([
             raw.accel_y.atan2(raw.accel_z).to_degrees(),
@@ -331,7 +333,7 @@ fn read_serial_lines(
                 let (lines, discarded_oversized) = drain_complete_lines(&mut buffer);
                 for raw in lines {
                     let _ = app.emit("serial_line", raw.clone());
-                    if raw.starts_with("IMU_STATE:") || raw.starts_with("CALIBRATION_") || raw.starts_with("REFERENCE_SET:") {
+                    if raw.starts_with("IMU_STATE:") || raw.starts_with("CALIBRATION_") || raw.starts_with("REFERENCE_SET:") || raw.starts_with("D19_") {
                         let _ = app.emit("serial_control", SerialControlLine { source_port: port_name.clone(), line: raw.clone() });
                     }
                     if !raw.starts_with('{') { continue; }
@@ -416,7 +418,7 @@ mod telemetry_tests {
             "accelX":0.0,"accelY":0.0,"accelZ":9.80665,
             "gyroX":0.0,"gyroY":0.0,"gyroZ":0.0,
             "timestampMs":351583,"imuValid":true,"calibrated":true,"referenceSet":true,
-            "orientation":[0.70710678,0.0,0.0,0.70710678]})
+            "orientation":[0.70710678,0.0,0.0,0.70710678],"orientationFrame":"RFU"})
     }
     fn convert(value: Value) -> Result<TelemetryMessage, &'static str> {
         convert_session(value, &mut altitude::AltitudeReference::default())

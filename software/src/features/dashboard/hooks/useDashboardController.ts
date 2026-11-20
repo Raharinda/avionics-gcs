@@ -5,7 +5,10 @@ import { sendSerialCommand } from "../../../services/serialConnection";
 import { useSerialConnection } from "../../connection/hooks/useSerialConnection";
 import { useTelemetry } from "../../telemetry/hooks/useTelemetry";
 import { useImuCalibration } from "../../calibration/hooks/useImuCalibration";
-import type { CommandState, Phase, TelemetryPoint } from "../../../types/telemetry";
+import type { Phase, TelemetryPoint } from "../../../types/telemetry";
+
+import { useGpio19Command } from "../../command/hooks/useGpio19Command";
+import { DEFAULT_PULSE_MS } from "../../../data/gpio19Command";
 
 const DEFAULT_LOG = "No telemetry data received";
 
@@ -50,37 +53,21 @@ export function buildTelemetryCsv(points: TelemetryPoint[]): string {
 
 export function useDashboardController() {
     const [phase, setPhase] = useState<Phase>("Initialization");
-    const [commandState, setCommandState] = useState<CommandState>("safe");
+    const [pulseDuration, setPulseDuration] = useState(String(DEFAULT_PULSE_MS));
     const [log, setLog] = useState(DEFAULT_LOG);
     const [clockSynchronizedAt, setClockSynchronizedAt] = useState(0);
     const [serialLogResetVersion, setSerialLogResetVersion] = useState(0);
     const connection = useSerialConnection(setLog);
+    const gpio19 = useGpio19Command(connection.hardwareStreaming && connection.connectionReady, connection.dataSource, setLog);
+    const commandState = gpio19.state;
     const telemetry = useTelemetry({ connected: connection.connected && connection.streamingSource === connection.dataSource, dataSource: connection.dataSource });
     const imuCalibration = useImuCalibration(connection.hardwareStreaming, connection.dataSource, sendSerialCommand);
     const sourceState = useRef(new Map<string, {
-        commandState: CommandState;
         phase: Phase;
         log: string;
     }>());
     const activeSource = useRef(connection.dataSource);
-    const fireTimer = useRef<number | undefined>(undefined);
     const lastCalibrationLog = useRef<string | null>(null);
-
-    const clearFireTimer = useCallback(() => {
-        if (fireTimer.current !== undefined) {
-            window.clearTimeout(fireTimer.current);
-            fireTimer.current = undefined;
-        }
-    }, []);
-
-    useEffect(() => clearFireTimer, [clearFireTimer]);
-
-    useEffect(() => {
-        if (!connection.connected) {
-            clearFireTimer();
-            setCommandState((current) => (current === "armed" || current === "firing" ? "safe" : current));
-        }
-    }, [clearFireTimer, connection.connected]);
 
     useEffect(() => {
         if (!connection.hardwareStreaming) {
@@ -93,7 +80,7 @@ export function useDashboardController() {
         lastCalibrationLog.current = candidate;
         if (candidate === "Menunggu status dan profil dari ESP32.")
             return;
-        if (!imuCalibration.progress.active && !imuCalibration.cancelling && candidate.startsWith("Receiver E22 hanya telemetri"))
+        if (!imuCalibration.progress.active && !imuCalibration.cancelling && /^Receiver E(?:22|32) hanya telemetri/.test(candidate))
             return;
         setLog(candidate);
     }, [
@@ -106,16 +93,14 @@ export function useDashboardController() {
 
     useEffect(() => {
         if (activeSource.current !== connection.dataSource) {
-            clearFireTimer();
             activeSource.current = connection.dataSource;
             const saved = sourceState.current.get(connection.dataSource);
-            setCommandState(saved?.commandState ?? "safe");
             setPhase(saved?.phase ?? "Initialization");
             setLog(saved?.log ?? DEFAULT_LOG);
             return;
         }
-        sourceState.current.set(connection.dataSource, { commandState, phase, log });
-    }, [clearFireTimer, commandState, connection.dataSource, log, phase]);
+        sourceState.current.set(connection.dataSource, { phase, log });
+    }, [connection.dataSource, log, phase]);
 
     const startTelemetry = useCallback(async () => {
         if (connection.dataSource === DUMMY_SOURCE)
@@ -126,87 +111,19 @@ export function useDashboardController() {
     }, [connection.dataSource, connection.startTelemetry, telemetry.clearTelemetry, telemetry.loadDummyData]);
 
     const stopTelemetry = useCallback(async () => {
-        clearFireTimer();
-        setCommandState((current) => (current === "armed" || current === "firing" ? "safe" : current));
         await connection.stopTelemetry();
         telemetry.clearTelemetry();
         setSerialLogResetVersion((version) => version + 1);
-    }, [clearFireTimer, connection.stopTelemetry, telemetry.clearTelemetry]);
+    }, [connection.stopTelemetry, telemetry.clearTelemetry]);
 
-    const armSystem = useCallback(async () => {
-        const timestamp = formatLogTimestamp();
-        if (!connection.connectionReady) {
-            setLog(`${timestamp}  ARM_SYSTEM rejected — connect port first`);
-            return;
-        }
-        if (commandState === "safe") {
-            try {
-                await sendSerialCommand("ARM_SYSTEM");
-                setCommandState("armed");
-                setLog(`${timestamp}  ARM_SYSTEM armed — awaiting FIRE command`);
-            } catch (error) {
-                setLog(`${timestamp}  ARM_SYSTEM rejected — ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
-    }, [connection.connectionReady, commandState]);
-
-    const disarmSystem = useCallback(async () => {
-        if (commandState === "armed") {
-            try {
-                await sendSerialCommand("DISARM_SYSTEM");
-                setCommandState("safe");
-                setLog(`${formatLogTimestamp()}  ARM_SYSTEM disarmed — fire controls disabled`);
-            } catch (error) {
-                setLog(`${formatLogTimestamp()}  DISARM_SYSTEM rejected — ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
+    const armSystem = gpio19.arm;
+    const disarmSystem = gpio19.disarm;
+    const fireCharge = useCallback(() => gpio19.fire(Number(pulseDuration)), [gpio19.fire, pulseDuration]);
+    const resetCommands = gpio19.reset;
+    useEffect(() => {
+        if (commandState === "complete") setPhase("Flight");
+        else if (commandState === "safe") setPhase("Initialization");
     }, [commandState]);
-
-    const fireCharge = useCallback(async () => {
-        const timestamp = formatLogTimestamp();
-        if (!connection.connectionReady) {
-            setLog(`${timestamp}  FIRE rejected — connect port first`);
-            return;
-        }
-        if (commandState !== "armed") {
-            setLog(`${timestamp}  FIRE rejected — arm system first`);
-            return;
-        }
-        clearFireTimer();
-        const firingSource = connection.dataSource;
-        setCommandState("firing");
-        setLog(`${timestamp}  FIRE — sending command to ESP32 GPIO19`);
-        try {
-            await sendSerialCommand("FIRE");
-            fireTimer.current = window.setTimeout(() => {
-                fireTimer.current = undefined;
-                if (activeSource.current !== firingSource)
-                    return;
-                setCommandState("complete");
-                setPhase("Flight");
-                setLog(`${formatLogTimestamp()}  ACK FIRE — GPIO19 pulse complete (100 ms)`);
-            }, 100);
-        } catch (error) {
-            setCommandState("armed");
-            setLog(`${timestamp}  FIRE rejected — ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }, [clearFireTimer, commandState, connection.connectionReady, connection.dataSource]);
-
-    const resetCommands = useCallback(async () => {
-        clearFireTimer();
-        setCommandState("safe");
-        setPhase("Initialization");
-        if (connection.connectionReady) {
-            try {
-                await sendSerialCommand("RESET_FIRE");
-                setLog(`${formatLogTimestamp()}  Command sequence reset — fire output SAFE`);
-            } catch (error) {
-                setLog(`${formatLogTimestamp()}  UI reset complete — firmware reset rejected: ${error instanceof Error ? error.message : String(error)}`);
-            }
-        } else {
-            setLog(`${formatLogTimestamp()}  Command sequence reset`);
-        }
-    }, [clearFireTimer, connection.connectionReady]);
 
     const refreshClock = useCallback(() => {
         const synchronizedAt = new Date();
@@ -234,5 +151,6 @@ export function useDashboardController() {
 
     const latestTelemetry = telemetry.series.length ? telemetry.series[telemetry.series.length - 1] : null;
     return { connection, telemetry, imuCalibration, latestTelemetry, phase, commandState, log,
+        commandReady: gpio19.ready, commandSent: gpio19.sent, pulseDuration, setPulseDuration,
         clockSynchronizedAt, serialLogResetVersion, startTelemetry, stopTelemetry, armSystem, disarmSystem, fireCharge, resetCommands, refreshClock, downloadTelemetryCsv };
 }

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { rocketAxes, sensorMountBasis, type SensorMount } from "../data/rocketAxes";
+import { rocketAxes, sensorMountBasis, RFU_TO_SCENE, type SensorMount } from "../data/rocketAxes";
 import type { RocketSceneState } from "../types/visualization";
 import { createRenderScheduler } from "./renderScheduler";
 function createAxisLabel(text: string, color: string) {
@@ -49,44 +49,51 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
     controls.target.set(0, 0, 0);
     controls.update();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const coordinateFrame = new THREE.Group();
+    coordinateFrame.quaternion.set(...RFU_TO_SCENE);
+    scene.add(coordinateFrame);
     const vehicle = new THREE.Group();
-    scene.add(vehicle);
+    coordinateFrame.add(vehicle);
+    const model = new THREE.Group();
+    vehicle.add(model);
     const bodyMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#a4adb5" : "#dfe7ed", metalness: .55, roughness: .35, transparent: true });
     const accentMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#7f8992" : "#f15b3a", roughness: .5, transparent: true });
     const detailMaterial = new THREE.MeshStandardMaterial({ color: darkMode ? "#525d66" : "#59636e", metalness: .6, roughness: .3, transparent: true });
     if (mode === "sensor") {
         const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, .12), new THREE.MeshStandardMaterial({ color: darkMode ? "#7c858d" : "#176d57", roughness: .7 }));
-        vehicle.add(board);
+        model.add(board);
         const chip = new THREE.Mesh(new THREE.BoxGeometry(.42, .42, .13), detailMaterial);
         chip.position.z = .1;
-        vehicle.add(chip);
+        model.add(chip);
         const label = createAxisLabel("MPU6050", darkMode ? "#d7dde2" : "#233a4f");
         label.position.set(0, -.75, .15);
-        vehicle.add(label);
+        model.add(label);
     }
     else {
-        vehicle.add(new THREE.Mesh(new THREE.CylinderGeometry(.36, .36, 1.65, 32), bodyMaterial));
+        // Cylinder/cone meshes are authored along Y; the RFU rocket nose is +Z.
+        model.rotation.x = Math.PI / 2;
+        model.add(new THREE.Mesh(new THREE.CylinderGeometry(.36, .36, 1.65, 32), bodyMaterial));
         const nose = new THREE.Mesh(new THREE.ConeGeometry(.36, .85, 32), bodyMaterial);
         nose.position.y = 1.25;
-        vehicle.add(nose);
+        model.add(nose);
         const band = new THREE.Mesh(new THREE.CylinderGeometry(.37, .37, .13, 32), accentMaterial);
         band.position.y = .45;
-        vehicle.add(band);
+        model.add(band);
         const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(.23, .15, .25, 24), detailMaterial);
         nozzle.position.y = -.95;
-        vehicle.add(nozzle);
+        model.add(nozzle);
         const shape = new THREE.Shape([new THREE.Vector2(0, -.6), new THREE.Vector2(.5, -.6), new THREE.Vector2(0, .2)]);
         const finGeometry = new THREE.ExtrudeGeometry(shape, { depth: .07, bevelEnabled: false });
         for (const angle of [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
             const fin = new THREE.Mesh(finGeometry, accentMaterial);
             fin.rotation.y = angle;
             fin.position.set(.33 * Math.cos(angle), -.15, -.33 * Math.sin(angle));
-            vehicle.add(fin);
+            model.add(fin);
         }
     }
     const axes = new THREE.Group();
     if (mode === "mounting")
-        scene.add(axes);
+        coordinateFrame.add(axes);
     else
         vehicle.add(axes);
     let axesKey = "";
@@ -98,11 +105,7 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
         axesKey = key;
         disposeSceneResources(axes);
         axes.clear();
-        const definitions = mode !== "rocket" ? [
-            { direction: [1, 0, 0] as const, label: "+X sensor", color: "#dd483a" },
-            { direction: [0, 1, 0] as const, label: "+Y sensor", color: "#228c53" },
-            { direction: [0, 0, 1] as const, label: "+Z sensor", color: "#356ce0" },
-        ] : rocketAxes(mount);
+        const definitions = rocketAxes(mount);
         for (const definition of definitions) {
             const direction = new THREE.Vector3(...definition.direction);
             axes.add(new THREE.ArrowHelper(direction, new THREE.Vector3(), 1.75, definition.color));
@@ -119,7 +122,7 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
     if (mode !== "mounting") {
         const up = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1.9, -1.6, 0), 1.4, darkMode ? "#aeb8c2" : "#667988");
         scene.add(up);
-        const upLabel = createAxisLabel(mode === "sensor" ? "UP" : "ACUAN", darkMode ? "#aeb8c2" : "#667988");
+        const upLabel = createAxisLabel(mode === "sensor" ? "ATAS (+Z)" : "ACUAN (+Z)", darkMode ? "#aeb8c2" : "#667988");
         upLabel.position.set(-1.9, .1, 0);
         scene.add(upLabel);
     }
@@ -160,7 +163,7 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
                 previewKey = key;
                 const basis = sensorMountBasis(state.mounting);
                 if (basis)
-                    target.setFromRotationMatrix(mountingMatrix.makeBasis(new THREE.Vector3(...basis.right), new THREE.Vector3(...basis.nose), new THREE.Vector3(...basis.third)));
+                    target.setFromRotationMatrix(mountingMatrix.makeBasis(new THREE.Vector3(...basis.right), new THREE.Vector3(...basis.forward), new THREE.Vector3(...basis.up)));
                 else
                     target.identity();
             }
@@ -169,7 +172,7 @@ export function createRocketScene(canvas: HTMLCanvasElement, initial: RocketScen
             const axis = new THREE.Vector3(state.sensorFace[0] === "X" ? 1 : 0, state.sensorFace[0] === "Y" ? 1 : 0, state.sensorFace[0] === "Z" ? 1 : 0);
             if (state.sensorFace[1] === "M")
                 axis.negate();
-            target.setFromUnitVectors(axis, new THREE.Vector3(0, 1, 0));
+            target.setFromUnitVectors(axis, new THREE.Vector3(0, 0, 1));
         }
         else if (state.quaternion && state.active) {
             const [w, x, y, z] = state.quaternion;

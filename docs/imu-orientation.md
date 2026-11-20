@@ -19,20 +19,21 @@ tekanan udara. Arah utara dan posisi XYZ dalam meter tidak diukur.
    desktop yang muncul, pilih port ESP32, lalu klik **Start**.
 3. Klik **Kalibrasi XYZ / tetapkan acuan** pada Rocket view. Pilih
    **Mulai enam posisi**. Ikuti panah sumbu pada papan MPU6050, bukan arah layar.
-4. Pilih **+X ke atas**, posisikan sumbu +X papan benar-benar menghadap atas,
-   lalu klik **Rekam +X**. Tahan diam sampai 200 sampel stabil selesai.
-   Ulangi untuk −X, +Y, −Y, +Z, dan −Z. Target waktu sekitar 2 detik per pose;
+4. Konvensi posisi normal adalah **+X kanan, +Y depan, +Z atas**;
+   −X kiri, −Y belakang, dan −Z bawah. Mulai dari **+Z · atas**, hadapkan
+   sumbu +Z ke atas, lalu klik **Rekam +Z** dan tahan diam sampai 200 sampel
+   stabil selesai. Ulangi untuk −Z, +Y, −Y, +X, dan −X. Setiap pose tetap
+   menghadapkan sumbu yang sedang direkam ke atas; untuk +Y, putar arah
+   depan papan ke langit, bukan menggeser papan ke depan. Target waktu sekitar 2 detik per pose;
    gangguan atau gerakan akan memperpanjang waktu karena hitungan diulang.
    Posisi dapat diambil dalam urutan apa pun.
 5. Setelah enam pose valid, ESP32 menyimpan profil dan mengirim konfirmasi.
    Tabel dalam dialog menampilkan rata-rata tiap pose, offset, skala, dan bias
    gyro yang benar-benar dibaca kembali dari ESP32.
-6. Pilih sumbu sensor yang mengarah ke **hidung** dan **sisi kanan** roket.
-   Contoh pemasangan awal: hidung +Z sensor, kanan +X sensor. Kedua sumbu
-   harus tegak lurus. Pilihan ini menyesuaikan model dengan pemasangan papan.
-   Pratinjau langsung memutar roket di dalam kerangka sumbu sensor tetap:
-   hidung +Y mengarah ke panah +Y, hidung +Z ke panah +Z. Klik
-   **Terapkan pemasangan ke ESP32** untuk menyimpan pilihan tersebut.
+6. Pemasangan bawaan adalah hidung/atas roket pada +Z sensor dan kanan pada
+   +X sensor; arah +Y adalah depan. Dialog menggunakan konvensi ini dan
+   menampilkan enam sisi dengan nama kanan/kiri, depan/belakang, atas/bawah.
+   Profil offset/skala/bias tetap memakai urutan sensor X/Y/Z yang sama.
 7. Pegang roket pada pose awal yang kamu inginkan, tahan diam, lalu klik
    **Tetapkan posisi sekarang sebagai acuan**. Pose tersebut menjadi nol 3D.
    Gerakkan roket: model mengikuti rotasi relatif terhadap pose tadi.
@@ -113,38 +114,33 @@ q_relative = inverse(q_reference) × q_current
 q_model = q_mount × q_relative × inverse(q_mount)
 ```
 
-`q_mount` memetakan pemasangan sensor ke sumbu model: **X ke kanan, Y ke
-hidung**, dan Z mengikuti kaidah tangan kanan. Saat acuan baru ditetapkan,
-`q_relative` identitas sehingga model kembali ke pose nol. Label `ACUAN`
-dan grid adalah kerangka acuan visual ini; keduanya bukan indikator arah
-gravitasi fisik apabila operator memilih pose awal miring.
+`q_mount` memetakan pemasangan sensor ke kerangka **RFU**: **+X kanan,
++Y depan, +Z atas**. Hidung roket mengikuti +Z, dan basis depan dihitung dari
+`atas × kanan`, sehingga semua pilihan pemasangan tetap mengikuti kaidah
+tangan kanan. Pemasangan bawaan hidung +Z/kanan +X menghasilkan rotasi
+identitas. Ketika acuan baru ditetapkan, `q_relative` identitas dan tampilan
+kembali ke pose nol.
 
-Sumbu yang digambar pada roket memakai label **sensor** sesuai pemasangan
-yang dikonfirmasi ESP32. Misalnya hidung +Z sensor dan kanan +X sensor:
-panah di hidung berlabel `+Z sensor · hidung` (biru), kanan `+X sensor · kanan`
-(merah), dan sumbu ketiga `−Y sensor` (hijau). Mesh Three.js secara internal
-tetap memanjang pada Y model; label sensor mengikuti transformasi pemasangan.
-Quaternion dari firmware sudah memakai koordinat model sehingga frontend
-tidak menerapkan transformasi pemasangan dua kali.
+Sumbu pada panduan kalibrasi dan Rocket view memakai label tetap +X kanan
+(merah), +Y depan (hijau), dan +Z atas (biru). Three.js memakai Y sebagai arah
+vertikal internal, sehingga parent scene menerapkan transformasi RFU ke
+Three.js `(x,y,z) → (x,z,−y)`. Transformasi ini hanya untuk menggambar; nilai
+sensor, quaternion, dan label pengguna tetap dalam RFU. Mesh roket yang
+awalnya dibuat memanjang pada Y diputar ke +Z sebelum transformasi scene.
+Pratinjau kalibrasi memutar tiap sumbu terpilih menuju +Z/atas secara
+bergantian; posisi awalnya +Z ke atas.
 
-Pilihan dropdown yang belum dikonfirmasi adalah rancangan pemasangan.
-Pratinjau di dialog langsung mengikuti pilihan ini. Tombol **Terapkan
-pemasangan ke ESP32** menyimpan sumbu tanpa menetapkan pose nol; perubahan
-sumbu membatalkan acuan aktif. Setelah ESP32 mengonfirmasi pemasangan,
-tetapkan pose awal melalui tombol acuan yang terpisah. Model utama mengikuti
-nilai yang dibaca kembali dari ESP32. Sudut Euler pada Orientasi live
-dilabeli kanan, hidung, dan sumbu ketiga beserta tanda sumbu sensornya.
-Dummy Data dan keadaan tanpa pemasangan terkonfirmasi memakai label sumbu
-model yang eksplisit.
+Quaternion USB baru disertai `orientationFrame:"RFU"`. Backend mengenali
+quaternion firmware lama tanpa penanda itu sebagai kerangka model Y-up,
+lalu memetakannya ke RFU dengan `[w,x,y,z] → [w,x,−z,y]`. Quaternion tidak
+menerima rotasi pemasangan dua kali. Sudut yang ditampilkan berurutan
+X kanan, Y depan, Z atas; yaw adalah rotasi di sekitar Z.
 
-Rocket view menyediakan dua tampilan:
-
-- **Orientasi live** menampilkan rotasi relatif terhadap pose awal. Saat
-  menetapkan ulang acuan, pose awal kembali ke nol walaupun pemasangan berubah.
-- **Pemasangan sensor** mempertahankan X/Y/Z sensor di tempat dan memutar mesh
-  roket sesuai sumbu hidung/kanan yang tersimpan. Mengganti hidung dari +Z
-  menjadi +Y benar-benar mengubah arah roket pada pratinjau ini. Tampilan ini
-  menggambarkan pemasangan; gerakan perangkat dibaca di Orientasi live.
+Label ACUAN dan grid adalah kerangka pose nol operator. Keduanya bukan
+indikator gravitasi fisik jika operator memilih acuan awal yang miring.
+Profil kalibrasi sensor lama tetap kompatibel; tidak perlu menghapus profil
+hanya karena konvensi gambar diubah. Tombol fisik CALIBRATION belum diberi
+aksi; kalibrasi tetap menggunakan dialog dan command USB yang sudah ada.
 
 ESP32 mengirim quaternion model melalui USB Serial sekitar 10 Hz. Backend
 Rust memvalidasi quaternion, menambahkan asal port, lalu mengirim event ke

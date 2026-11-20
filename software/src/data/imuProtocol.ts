@@ -12,6 +12,7 @@ export function parseImuState(text: string): ImuState | null {
         typeof v.referenceSet !== "boolean" || typeof v.imuReady !== "boolean" ||
         !axis(v.noseAxis) || !axis(v.rightAxis) || Math.abs(v.noseAxis) === Math.abs(v.rightAxis)) return null;
     if (v.referenceSet && (!v.calibrated || !v.imuReady)) return null;
+    if (v.orientationFrame !== undefined && v.orientationFrame !== "RFU") return null;
     if (v.profile !== null) {
       const p = v.profile;
       if (!object(p) || !vector(p.offset) || !vector(p.scale) || !vector(p.gyroBias) ||

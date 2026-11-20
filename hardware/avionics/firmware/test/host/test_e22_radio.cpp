@@ -1,95 +1,205 @@
+#include <array>
 #include <cassert>
 #include <iostream>
 #include <string>
 #include "lora_radio.h"
+#include "e22_commands.h"
 
 namespace {
-int auxLevel=LOW, configuredPin=-1, configuredMode=-1;
+std::array<int,40> pinModes{};
+std::array<int,40> levels{};
+uint32_t clockMs=0;
+int auxLevel=HIGH, auxReads=0;
+void tick(uint32_t now) { clockMs=now; radio::service(now); }
+void fresh(uint32_t start=0) {
+    clockMs=start;
+    pinModes.fill(-1);
+    levels.fill(-1);
+    auxLevel=HIGH;
+    auxReads=0;
+    auto& uart=radio::port();
+    uart.written.clear(); uart.freeBytes=512; uart.failWrite=false; uart.maxWriteBytes=512;
+    board::beginControls();
+    radio::begin();
+    tick(start); // Start optional AUX stability timing.
+    tick(start+radio::kStartupGuardMs);
 }
-void pinMode(int pin,int mode) { configuredPin=pin; configuredMode=mode; }
-int digitalRead(int pin) { assert(pin==23); return auxLevel; }
+void changeMode(radio::Mode mode, uint32_t now) {
+    assert(radio::requestMode(mode,now));
+    assert(!radio::readyToSend(now));
+    assert(!radio::canReceive(now));
+    tick(now+radio::kModeDrainMs);
+    tick(now+radio::kModeDrainMs+1); // Observe optional AUX after driving M0/M1.
+    tick(now+radio::kModeDrainMs+radio::kModeSettleMs);
+    assert(radio::state().mode==mode && radio::state().phase==radio::Phase::Idle);
+    const auto bits=static_cast<uint8_t>(mode);
+    assert(levels[radio::kM0Pin]==(bits&1U?HIGH:LOW));
+    assert(levels[radio::kM1Pin]==(bits&2U?HIGH:LOW));
+}
+}
+TestSerial Serial;
+void pinMode(int pin,int mode) { assert(pin>=0 && pin<40); pinModes[pin]=mode; }
+void digitalWrite(int pin,int level) {
+    assert(pin==radio::kM0Pin || pin==radio::kM1Pin || pin==board::kPopTestOutputPin);
+    if (pin==board::kPopTestOutputPin) assert(level==LOW);
+    assert(pinModes[pin]==OUTPUT);
+    levels[pin]=level;
+}
+int digitalRead(int pin) { assert(radio::kUseAux && pin==radio::kAuxPin); ++auxReads; return auxLevel; }
+uint32_t millis() { return clockMs; }
 
 int main() {
-    radio::begin();
+    fresh();
     auto& uart=radio::port();
-    assert(configuredPin==23 && configuredMode==INPUT);
+    assert(radio::kM0Pin==25 && radio::kM1Pin==26);
+    assert(pinModes[25]==OUTPUT && pinModes[26]==OUTPUT);
+    assert(pinModes[13]==INPUT_PULLUP && pinModes[14]==INPUT_PULLUP);
+    assert(pinModes[19]==OUTPUT && levels[19]==LOW);
+    assert(pinModes[12]==-1 && pinModes[23]==-1);
+    assert(levels[25]==LOW && levels[26]==LOW);
     assert(uart.number==2 && uart.baud==9600 && uart.format==SERIAL_8N1);
-    assert(uart.rx==16 && uart.tx==17 && uart.bufferSize==512);
-    assert(uart.written.empty()); // No REYAX AT or binary config on startup.
-    assert(!radio::readyToSend(0));
-
-    auxLevel=HIGH;
-    assert(!radio::readyToSend(100));
-    assert(!radio::readyToSend(101));
-    assert(radio::readyToSend(102));
-    auxLevel=LOW;
-    assert(!radio::readyToSend(103));
-    auxLevel=HIGH;
-    assert(!radio::readyToSend(104));
-    assert(!radio::readyToSend(105));
-    assert(radio::readyToSend(106));
-    std::cout<<"PASS: E22 9600 8N1 and AUX GPIO23 gate, including busy recovery\n";
+    assert(uart.rx==16 && uart.tx==17 && uart.bufferSize==512 && uart.rxBufferSize==2048);
+    assert(uart.written.empty()); // Mode pins never write E22 configuration.
+    assert(radio::readyToSend(1000));
+    if (!radio::kUseAux) assert(auxReads==0);
+    std::cout<<"PASS: GPIO25/26 normal boot, reserved buttons 13/14, POP_OUT 19 LOW, UART2 9600; AUX="
+             <<(radio::kUseAux?"GPIO27":"disconnected")<<'\n';
 
     const std::string line="{\"pressure\":1008.25,\"accelZ\":9.81}\n";
-    assert(radio::sendLine(line.data(),line.size(),106));
-    assert(uart.written==line); // Exact raw JSON+newline, no AT/address wrapper.
+    assert(radio::sendLine(line.data(),line.size(),1000));
+    assert(uart.written==line);
+    assert(!radio::sendLine(line.data(),line.size(),2999));
+    assert(radio::readyToSend(3000));
     uart.written.clear();
-    auxLevel=LOW;
-    assert(!radio::sendLine(line.data(),line.size(),107));
-    assert(uart.written.empty());
-    auxLevel=HIGH;
-    assert(!radio::sendLine(line.data(),line.size(),108));
     uart.freeBytes=static_cast<int>(line.size())-1;
-    assert(!radio::sendLine(line.data(),line.size(),110));
-    assert(uart.written.empty());
+    assert(!radio::sendLine(line.data(),line.size(),3000));
     uart.freeBytes=512;
     uart.failWrite=true;
-    assert(!radio::sendLine(line.data(),line.size(),110));
+    assert(!radio::sendLine(line.data(),line.size(),3000));
+    assert(radio::readyToSend(3000));
     uart.failWrite=false;
-    assert(radio::sendLine(line.data(),line.size(),110));
-    assert(uart.written==line);
-    std::cout<<"PASS: exact JSON framing; busy AUX, full UART and failed writes are not reported sent\n";
-
+    uart.maxWriteBytes=4;
+    assert(!radio::sendLine(line.data(),line.size(),3000));
+    assert(uart.written==line.substr(0,4));
+    assert(!radio::readyToSend(4999));
+    assert(radio::readyToSend(5000));
+    uart.maxWriteBytes=512;
     uart.written.clear();
     std::string limit(radio::kMaxFrameBytes,'x'); limit.back()='\n';
-    assert(radio::sendLine(limit.data(),limit.size(),112));
+    assert(radio::sendLine(limit.data(),limit.size(),5000));
     assert(uart.written==limit);
-    uart.written.clear();
-    assert(!radio::sendLine(nullptr,1,112));
-    assert(!radio::sendLine("",0,112));
-    assert(!radio::sendLine("{}",2,112));
-    std::string oversized=limit+'\n';
-    assert(!radio::sendLine(oversized.data(),oversized.size(),112));
-    assert(uart.written.empty());
-    std::cout<<"PASS: bounded complete lines; no partial/oversized frames queued\n";
+    assert(!radio::sendLine(nullptr,1,7000));
+    assert(!radio::sendLine("",0,7000));
+    assert(!radio::sendLine("{}",2,7000));
+    const std::string oversized=limit+'\n';
+    assert(!radio::sendLine(oversized.data(),oversized.size(),7000));
+    std::cout<<"PASS: bounded exact JSON, TX spacing, UART backpressure, failed/partial writes\n";
 
-    radio::begin();
-    assert(!radio::readyToSend(UINT32_MAX-1));
-    assert(!radio::readyToSend(UINT32_MAX));
-    assert(radio::readyToSend(0));
-    auxLevel=LOW;
-    assert(!radio::readyToSend(1));
-    std::cout<<"PASS: AUX stability timing survives millis rollover\n";
+    // A request immediately after TX pauses new frames and leaves pins alone
+    // until the old frame has had time to leave UART and radio buffers.
+    fresh();
+    assert(radio::sendLine(line.data(),line.size(),1000));
+    assert(radio::requestMode(radio::Mode::Configuration,1001));
+    assert(!radio::requestMode(radio::Mode::Sleep,1002));
+    assert(!radio::sendLine(line.data(),line.size(),1002));
+    tick(3000);
+    assert(levels[25]==LOW && levels[26]==LOW);
+    tick(3001);
+    assert(levels[25]==LOW && levels[26]==HIGH);
+    assert(radio::state().phase==radio::Phase::Settling);
+    tick(3002);
+    assert(!radio::canReceive(4000));
+    tick(4001);
+    assert(radio::state().mode==radio::Mode::Configuration);
+    assert(!radio::readyToSend(4001) && !radio::canReceive(4001));
+    assert(!radio::requestMode(static_cast<radio::Mode>(4),4001));
+    changeMode(radio::Mode::Sleep,5000);
+    assert(!radio::canReceive(8000));
+    changeMode(radio::Mode::Wor,9000);
+    assert(radio::canReceive(12000) && !radio::readyToSend(12000));
+    changeMode(radio::Mode::Normal,13000);
+    assert(radio::canReceive(16000) && radio::readyToSend(16000));
+    std::cout<<"PASS: all four pin combinations; drain/settle pause telemetry and resume NORMAL\n";
 
-    radio::BusyWarning warning;
-    assert(!warning.update(true,190000));
-    assert(!warning.update(false,190047)); // Busy immediately after TX.
-    assert(!warning.update(true,190250));
-    assert(!warning.update(false,196000)); // A later brief busy period.
-    assert(!warning.update(false,196001));
-    assert(!warning.update(true,196002));
-    assert(!warning.update(false,200000));
-    assert(!warning.update(false,204999));
-    assert(warning.update(false,205000));
-    assert(!warning.update(false,205001));
-    assert(warning.update(false,210000));
-    assert(!warning.update(true,210001));
-    assert(!warning.update(false,300000)); // Recovery resets elapsed wait.
-    assert(!warning.update(false,304999));
-    assert(warning.update(false,305000));
-    radio::BusyWarning rolloverWarning;
-    assert(!rolloverWarning.update(false,UINT32_MAX-1000));
-    assert(!rolloverWarning.update(false,3998));
-    assert(rolloverWarning.update(false,3999));
-    std::cout<<"PASS: brief TX busy periods do not warn; sustained busy warns after 5s, resets on recovery, and survives rollover\n";
+    fresh(UINT32_MAX-500);
+    assert(radio::readyToSend(499));
+    fresh(UINT32_MAX-3000);
+    assert(radio::sendLine(line.data(),line.size(),UINT32_MAX-200));
+    assert(!radio::readyToSend(1798));
+    assert(radio::readyToSend(1799));
+    fresh(UINT32_MAX-5000);
+    assert(radio::requestMode(radio::Mode::Sleep,UINT32_MAX-1000));
+    tick(999); tick(1000); tick(1999);
+    assert(radio::state().mode==radio::Mode::Sleep);
+    std::cout<<"PASS: startup, TX spacing and mode changes survive millis rollover\n";
+
+    fresh();
+    Serial.output.clear();
+    assert(!radio::handleUsbCommand("IMU_STATUS",1000));
+    assert(radio::handleUsbCommand("LORA_MODE:UNKNOWN",1000));
+    assert(radio::state().phase==radio::Phase::Idle);
+    assert(radio::handleUsbCommand("LORA_MODE:SLEEP",1000));
+    tick(3000); tick(3001); tick(4000);
+    assert(radio::state().mode==radio::Mode::Sleep);
+    assert(radio::handleUsbCommand("LORA_STATUS",4000));
+    assert(Serial.output.find("mode=SLEEP")!=std::string::npos);
+    assert(uart.written.empty()); // Local commands never travel over radio.
+    std::cout<<"PASS: local USB mode commands; invalid commands do not change pins\n";
+
+    const struct { const char* command; radio::Mode mode; int m0,m1; } pinCommands[]={
+        {"LORA_PINS:0,0",radio::Mode::Normal,LOW,LOW},
+        {"LORA_PINS:1,0",radio::Mode::Wor,HIGH,LOW},
+        {"LORA_PINS:0,1",radio::Mode::Configuration,LOW,HIGH},
+        {"LORA_PINS:1,1",radio::Mode::Sleep,HIGH,HIGH},
+    };
+    for (const auto& request:pinCommands) {
+        fresh();
+        assert(radio::handleUsbCommand(request.command,1000));
+        tick(3000); tick(3001); tick(4000);
+        assert(radio::state().mode==request.mode);
+        assert(levels[25]==request.m0 && levels[26]==request.m1);
+        assert(levels[19]==LOW && uart.written.empty());
+    }
+    for (const char* bad:{"LORA_PINS:","LORA_PINS:00","LORA_PINS:2,0", "LORA_PINS:0,-1",
+         "LORA_PINS:0, 1","LORA_PINS:0,1,0","LORA_PINS:0,1junk"}) {
+        fresh();
+        assert(radio::handleUsbCommand(bad,1000));
+        assert(radio::state().phase==radio::Phase::Idle && radio::state().mode==radio::Mode::Normal);
+        assert(levels[25]==LOW && levels[26]==LOW);
+    }
+    Serial.output.clear();
+    assert(radio::handleUsbCommand("LORA_HELP",1000));
+    assert(Serial.output.find("LORA_PINS:0,1")!=std::string::npos);
+    std::cout<<"PASS: terminal M0,M1 combinations select the correct modes; malformed commands are rejected\n";
+
+    if (radio::kUseAux) {
+        fresh();
+        auxLevel=LOW;
+        assert(!radio::readyToSend(1001));
+        assert(radio::canReceive(1001)); // AUX LOW must not block incoming UART.
+        auxLevel=HIGH;
+        assert(!radio::readyToSend(1002));
+        assert(!radio::readyToSend(1003));
+        assert(radio::readyToSend(1004));
+        std::cout<<"PASS: AUX GPIO27 gates TX while RX remains readable during AUX LOW\n";
+        auxLevel=LOW;
+        assert(radio::handleUsbCommand("LORA_PINS:0,1",1100));
+        tick(4000);
+        assert(radio::state().phase==radio::Phase::Draining);
+        assert(levels[25]==LOW && levels[26]==LOW);
+        auxLevel=HIGH;
+        tick(4001); tick(4003);
+        assert(radio::state().phase==radio::Phase::Settling && levels[26]==HIGH);
+        Serial.output.clear();
+        assert(radio::handleUsbCommand("LORA_STATUS",4003));
+        assert(Serial.output.find("M0_SET=0 M1_SET=1")!=std::string::npos);
+        tick(4004); tick(5003);
+        assert(radio::state().phase==radio::Phase::Idle && radio::state().mode==radio::Mode::Configuration);
+        std::cout<<"PASS: terminal pin requests wait for AUX before driving mode pins\n";
+    } else assert(auxReads==0);
+    // Closing either button never fires the output or starts/reset calibration.
+    levels[13]=LOW; levels[14]=LOW;
+    tick(20000);
+    assert(levels[19]==LOW);
+    std::cout<<"PASS: physical buttons remain passive and POP_TEST_OUT never goes HIGH\n";
 }

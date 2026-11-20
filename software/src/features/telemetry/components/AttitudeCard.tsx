@@ -7,12 +7,11 @@ type Props = {
     hasData: boolean;
 };
 
-// Model coordinates: X is right (rocket pitch), Y is nose (rocket roll), Z is third axis (yaw).
-// Backend Euler angles [roll, pitch, yaw] represent rotations around model [X, Y, Z].
+// The local calibration firmware reports RFU: X right, Y forward, Z up.
 const ATTITUDE_AXES = [
     { key: "yaw", label: "YAW" },
-    { key: "roll", label: "PITCH" },
-    { key: "pitch", label: "ROLL" },
+    { key: "pitch", label: "PITCH" },
+    { key: "roll", label: "ROLL" },
 ] as const;
 
 export const AttitudeCard = memo(function AttitudeCard({ telemetry, hasData }: Props) {

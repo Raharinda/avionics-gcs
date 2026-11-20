@@ -74,5 +74,5 @@ int main() {
     assert(sensor_telemetry::encodeLine(sample,output,0)==0);
     sample.accel.fill(std::numeric_limits<float>::max());
     assert(sensor_telemetry::encodeLine(sample,output,sizeof(output))==0 && output[0]=='\0');
-    std::cerr<<"PASS: sensor TX -> fragmented E22 stream -> receiver preserves complete frames; invalid IMU/truncated output rejected\n";
+    std::cerr<<"PASS: sensor TX -> fragmented E32 stream -> receiver preserves complete frames; invalid IMU/truncated output rejected\n";
 }

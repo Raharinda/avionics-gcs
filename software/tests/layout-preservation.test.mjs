@@ -9,7 +9,7 @@ import { createServer, createRunnableDevEnvironment } from 'vite';
 
 test('dashboard markup and stylesheet match the reviewed layout', { timeout: 15000 }, async () => {
   const stylesheet = await readFile(new URL('../src/App.css', import.meta.url));
-  assert.equal(createHash('sha256').update(stylesheet).digest('hex'), 'be794808878a5994e70001cee12c135b8a36def38fb338c747032b18a258702b');
+  assert.equal(createHash('sha256').update(stylesheet).digest('hex'), 'e91bd87b1dcc27cf4a5919214a513373645f5785bf850cb8c3d81896786fabdb');
   const RealDate = Date;
   globalThis.Date = class extends RealDate {
     constructor(...args) { super(...(args.length ? args : ['2026-11-16T07:00:00Z'])); }
