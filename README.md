@@ -23,7 +23,7 @@ Sistem ini membaca data sensor pada roket, mengirimkannya secara nirkabel ke Gro
 
 ```mermaid
 flowchart LR
-  A[ESP32 Avionics] -->|LoRa E22-400T30D| B[ESP32 GCS]
+  A[ESP32 Avionics] -->|LoRa E32-433T30D| B[ESP32 GCS]
   B -->|USB Serial| C[Rust Backend]
   C -->|Tauri Events| D[React Dashboard]
   C --> E[(SQLite)]
@@ -32,8 +32,8 @@ flowchart LR
 
 | Komponen         | Peran                                                    |
 | ---------------- | -------------------------------------------------------- |
-| ESP32 Avionics   | Membaca sensor, mengirim JSON via UART dan LoRa E22     |
-| ESP32 GCS        | Menerima data LoRa E22, meneruskan ke laptop via Serial |
+| ESP32 Avionics   | Membaca sensor, mengirim JSON via UART dan LoRa E32-433T30D     |
+| ESP32 GCS        | Menerima data LoRa E32-433T30D, meneruskan ke laptop via Serial |
 | Aplikasi Desktop | Dashboard telemetry, penyimpanan data, ekspor, kontrol   |
 
 Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust backend.
@@ -46,15 +46,15 @@ Frontend tidak membaca serial secara langsung. Semua akses perangkat lewat Rust 
 | --------------------------- | -------------- |
 | Struktur repository         | Selesai        |
 | Setup Tauri 2 + React + TS  | Selesai        |
-| Firmware Avionics (MPU6050 + BMP280 via I2C) | Sensor, USB Serial, dan transmitter UART E22 tersedia |
-| Firmware GCS               | Receiver E22 → USB Serial tersedia; pengujian radio fisik diperlukan |
+| Firmware Avionics (MPU6050 + BMP280 via I2C) | Sensor, USB Serial, dan transmitter UART E32-433T30D tersedia |
+| Firmware GCS               | Receiver E32-433T30D → USB Serial tersedia; pengujian radio fisik diperlukan |
 | Serial reader (Rust)        | Belum dimulai  |
 | Dashboard real-time         | Belum dimulai  |
 | SQLite dan CSV export       | Belum dimulai  |
 | GitHub Actions (CI/CD)      | Rencana        |
 | Ground Control              | Rencana        |
 
-Firmware avionics menggunakan MPU6050 dan BMP280 pada satu bus I2C: SDA GPIO 21 (D21), SCL GPIO 22 (D22). Firmware `imu3d-v2` menargetkan pembacaan IMU 100 Hz, BMP280 10 Hz, JSON Serial 10 Hz, dan pengiriman sensor melalui E22 setiap 2 detik jika AUX siap. Kalibrasi enam pose dan acuan awal operator mendukung model 3D relatif melalui USB langsung; profil/status/quaternion belum diteruskan lewat radio. Lihat [panduan orientasi](docs/imu-orientation.md) dan [panduan E22](docs/lora-e22.md). Skema database dan mekanisme otorisasi kontrol masih dalam pengembangan.
+Firmware avionics menggunakan MPU6050 dan BMP280 pada satu bus I2C: SDA GPIO 21 (D21), SCL GPIO 22 (D22). Firmware `imu3d-v2` menargetkan pembacaan IMU 100 Hz, BMP280 10 Hz, JSON Serial 10 Hz, dan pengiriman rata-rata sensor melalui E32 dengan interval minimal 2 detik dalam mode NORMAL. Pembacaan tetap diakumulasi saat radio belum siap; jendela dikosongkan setelah seluruh frame diterima UART lokal. M0 dikontrol GPIO25, M1 GPIO26, dan AUX TX/RX aktif di GPIO27 (D27), sesuai koreksi wiring terbaru. Kalibrasi enam pose dan acuan awal operator mendukung model 3D relatif melalui USB langsung; profil/status/quaternion belum diteruskan lewat radio. Lihat [panduan orientasi](docs/imu-orientation.md) dan [panduan E32](docs/lora-e32.md). Skema database dan mekanisme otorisasi kontrol masih dalam pengembangan.
 
 ---
 
@@ -104,7 +104,7 @@ cargo check             # Cek kode Rust (jalankan dari src-tauri/)
 
 Firmware avionics memakai C++ dengan Arduino Framework dan PlatformIO untuk ESP32 DevKit klasik. Panduan sambungan MPU6050 dan BMP280, konfigurasi, serta contoh keluaran tersedia di [README firmware avionics](hardware/avionics/firmware/README.md).
 
-Untuk dua Ebyte E22-400T30D dan dua ESP32, ikuti [panduan LoRa E22 transmitter → receiver → dashboard Tauri](docs/lora-e22.md). Firmware avionics mengirim JSON sensor melalui UART transparan dengan AUX pada GPIO 23; [firmware receiver E22](hardware/gcs/firmware/README.md) meneruskannya ke USB untuk dashboard.
+Untuk dua Ebyte **E32-433T30D** dan dua ESP32, ikuti [panduan LoRa E32 transmitter → receiver → dashboard Tauri](docs/lora-e32.md). Firmware avionics mengirim JSON sensor melalui UART transparan dan receiver meneruskannya melalui USB ke dashboard. TX dan RX memakai driver E32 bersama, dengan M0 GPIO25, M1 GPIO26, serta AUX TX/RX GPIO27. Parameter radio tersimpan pada kedua modul harus cocok. Gunakan [setup E32 lewat ESP32](docs/lora-e32.md#setup-parameter-e32-lewat-esp32) untuk menyimpan profil yang sama dan memverifikasi hasil baca ulang.
 
 Kode transmitter berada di `hardware/avionics/firmware`, dan kode receiver di
 `hardware/gcs/firmware`. Untuk menjalankan telemetri MPU6050 + BMP280 dari root repository:
@@ -116,8 +116,9 @@ Kode transmitter berada di `hardware/avionics/firmware`, dan kode receiver di
 ./hardware/telemetry.sh monitor rx /dev/ttyACM0
 ```
 
-Sesuaikan port TX/RX. M0 dan M1 kedua E22 tetap GND; konfigurasi modul yang sudah
-berhasil dipakai tidak perlu diulang. Tutup monitor sebelum menghubungkan port
+Sesuaikan port TX/RX. Hubungkan M0 ke GPIO25, M1 ke GPIO26, dan AUX ke GPIO27 pada kedua ESP32;
+firmware memilih NORMAL saat boot. Konfigurasi modul yang sudah berhasil dipakai
+tidak perlu diulang. Tutup monitor sebelum menghubungkan port
 receiver ke Tauri. Untuk bekerja langsung dari folder firmware transmitter:
 
 ```bash
@@ -128,13 +129,13 @@ cd hardware/avionics/firmware
 ./firmware.sh monitor   # Serial Monitor, 115200 baud; keluar dengan Ctrl+C
 ```
 
-Hubungkan ESP32 dengan kabel USB data sebelum flash. Port dapat ditentukan secara eksplisit, misalnya `./firmware.sh flash /dev/ttyUSB0` dan `./firmware.sh monitor /dev/ttyUSB0`. Firmware receiver E22 berada di `hardware/gcs/firmware` dengan perintah build/flash/monitor yang sama; lihat [panduan receiver](hardware/gcs/firmware/README.md).
+Hubungkan ESP32 dengan kabel USB data sebelum flash. Port dapat ditentukan secara eksplisit, misalnya `./firmware.sh flash /dev/ttyUSB0` dan `./firmware.sh monitor /dev/ttyUSB0`. Firmware receiver E32-433T30D berada di `hardware/gcs/firmware` dengan perintah build/flash/monitor yang sama; lihat [panduan receiver](hardware/gcs/firmware/README.md).
 
 ---
 
 ## 📦 Format Data
 
-ESP32 transmitter menyusun JSON sensor, lalu ESP32 GCS meneruskannya lewat USB Serial setelah menerima satu baris lengkap dari E22. Contoh struktur (hanya contoh format, bukan hasil pengukuran):
+ESP32 transmitter menyusun JSON sensor, lalu ESP32 GCS meneruskannya lewat USB Serial setelah menerima satu baris lengkap dari E32. Contoh struktur (hanya contoh format, bukan hasil pengukuran):
 
 ```json
 {
@@ -317,3 +318,11 @@ Mulai dari `main`, buat branch `feat/*`, dan kirim Pull Request kembali ke `main
 **Made with ❤️ by Avionics Team**
 
 </div>
+# Kontrol D19 lewat LoRa dua arah
+
+Pada panel COMMAND, pilih **Durasi pulsa D19 (ms)** (default **200 ms**,
+rentang 1–10000 ms), Arm lalu FIRE. ESP32 avionics menghasilkan HIGH 3,3 V
+selama durasi tersebut dan otomatis LOW. Reset mengirim LOW. Status FIRED
+menunggu ACK avionics. Flash firmware terbaru pada **TX dan RX**; lihat
+[panduan](docs/lora-bidirectional.md). Software memakai basis `dev`, sementara
+konfigurasi hardware dan kalibrasi lokal dipertahankan.

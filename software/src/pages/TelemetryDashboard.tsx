@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useState } from "react";
+import { useTelemetryFreshness } from "../features/telemetry/hooks/useTelemetryFreshness";
 import { DashboardLayout } from "../features/dashboard/components/DashboardLayout";
 import { DashboardHeader } from "../features/dashboard/components/DashboardHeader";
 import { TelemetryMetrics } from "../features/telemetry/components/TelemetryMetrics";
 import { RocketAttitudePanel } from "../features/flight/components/RocketAttitudePanel";
 import { MapPanel } from "../features/navigation/components/MapPanel";
 import { TelemetrySensorGrid } from "../features/telemetry/components/TelemetrySensorGrid";
+import { SignalStrengthCard } from "../features/telemetry/components/SignalStrengthCard";
 import { CommandPanel } from "../features/command/components/CommandPanel";
 import { SerialLogPanel } from "../features/connection/components/SerialLogPanel";
 import { useDashboardController } from "../features/dashboard/hooks/useDashboardController";
@@ -15,6 +17,8 @@ export function TelemetryDashboard() {
     const { connection, telemetry, imuCalibration, latestTelemetry } = dashboard;
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
+    const telemetryFresh = useTelemetryFreshness(telemetry.receivedAt, 5000);
+    const hasTelemetry = telemetry.series.length > 0 && telemetryFresh && connection.connected && connection.streamingSource === connection.dataSource;
     const openCalibration = useCallback(() => setIsCalibrationOpen(true), []);
     const closeCalibration = useCallback(() => setIsCalibrationOpen(false), []);
     const toggleTheme = useCallback(() => setIsDarkMode((enabled) => !enabled), []);
@@ -42,7 +46,9 @@ export function TelemetryDashboard() {
                 <TelemetryMetrics
                     altitude={latestTelemetry?.altitude ?? null}
                     packetCount={telemetry.packetCount}
-                    hasTelemetry={telemetry.series.length > 0}
+                    lostPacketCount={telemetry.lostPacketCount}
+                    hasTelemetry={hasTelemetry}
+                    series={telemetry.series}
                 />
             }
             rocket={
@@ -61,21 +67,36 @@ export function TelemetryDashboard() {
                     onSetReference={imuCalibration.setReference}
                 />
             }
-            map={<MapPanel hasTelemetry={telemetry.series.length > 0} />}
-            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} darkMode={isDarkMode} />}
+            map={<MapPanel hasTelemetry={hasTelemetry} />}
+            sensors={<TelemetrySensorGrid series={telemetry.series} latestTelemetry={latestTelemetry} dataSource={connection.dataSource} darkMode={isDarkMode} hasTelemetry={hasTelemetry} />}
             commands={
                 <CommandPanel
                     commandState={dashboard.commandState}
-                    connectionReady={connection.connectionReady}
+                    commandSent={dashboard.commandSent}
+                    pulseDuration={dashboard.pulseDuration}
+                    onPulseDurationChange={dashboard.setPulseDuration}
+                    connectionReady={dashboard.commandReady}
                     connected={connection.connected}
                     isDarkMode={isDarkMode}
+                    hasTelemetry={hasTelemetry}
+                    latestTelemetry={latestTelemetry}
                     onArm={dashboard.armSystem}
+                    onDisarm={dashboard.disarmSystem}
                     onFire={dashboard.fireCharge}
                     onStart={dashboard.startTelemetry}
                     onStop={dashboard.stopTelemetry}
                     onRefreshClock={dashboard.refreshClock}
                     onReset={dashboard.resetCommands}
                     onToggleTheme={toggleTheme}
+                />
+            }
+            signal={
+                <SignalStrengthCard
+                    connected={connection.connected}
+                    hasTelemetry={hasTelemetry}
+                    latestTelemetry={latestTelemetry}
+                    packetCount={telemetry.packetCount}
+                    lostPacketCount={telemetry.lostPacketCount}
                 />
             }
             dialogs={

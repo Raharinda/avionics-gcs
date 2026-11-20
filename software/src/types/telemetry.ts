@@ -1,5 +1,5 @@
 export type Phase = "Initialization" | "Flight" | "Recovery";
-export type CommandState = "safe" | "armed" | "firing" | "complete";
+export type CommandState = "safe" | "armed" | "firing" | "complete" | "error";
 
 export type TelemetryPoint = {
   time: number;
@@ -19,5 +19,6 @@ export type TelemetryPoint = {
   referenceSet?: boolean;
   imuValid?: boolean;
   timestampMs?: number | null;
+  rssi?: number | null;
   sourcePort?: string;
 };

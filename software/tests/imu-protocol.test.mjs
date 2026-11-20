@@ -18,10 +18,10 @@ const hintJs = compile(await readFile(new URL('../src/data/calibrationHint.ts', 
   .replace('"../types/imu"', JSON.stringify(typesUrl));
 const { calibrationHint } = await import(moduleUrl(hintJs));
 const axesJs = compile(await readFile(new URL('../src/data/rocketAxes.ts', import.meta.url), 'utf8'));
-const { rocketAxes, validSensorMount, sensorMountBasis } = await import(moduleUrl(axesJs));
+const { rocketAxes, validSensorMount, sensorMountBasis, RFU_TO_SCENE } = await import(moduleUrl(axesJs));
 const faces = ['XP', 'XM', 'YP', 'YM', 'ZP', 'ZM'];
 const state = () => ({
-  firmware: 'imu3d-v2', calibrated: true, referenceSet: false, imuReady: true,
+  firmware: 'imu3d-v2', orientationFrame: 'RFU', calibrated: true, referenceSet: false, imuReady: true,
   noseAxis: 3, rightAxis: 1,
   profile: { offset: [.03, -.01, .02], scale: [1, 1.01, .99], gyroBias: [.001, -.002, .003],
     poses: faces.map((face, i) => ({ face, samples: 200,
@@ -107,65 +107,63 @@ test('pose guidance distinguishes wrong sign, rotation, missing data, and old pr
   assert.equal(calibrationHint('XP', { ...reading, imuValid: false }).tone, 'warning');
 });
 
-test('nose +Z and right +X show sensor axes on the confirmed model basis', () => {
+test('RFU axis labels name X right, Y forward and Z up regardless of sensor mounting', () => {
   const axes = rocketAxes({ noseAxis: 3, rightAxis: 1 });
-  assert.equal(axes[1].label, '+Z sensor · hidung');
-  assert.deepEqual(axes[1].direction, [0, 1, 0]);
-  assert.equal(axes[1].color, '#356ce0');
-  assert.equal(axes[0].label, '+X sensor · kanan');
-  assert.equal(axes[2].label, '−Y sensor');
-  assert.equal(axes[1].angleLabel, 'HIDUNG · +Z');
-  const changed = rocketAxes({ noseAxis: -1, rightAxis: 3 });
-  assert.equal(changed[1].label, '−X sensor · hidung');
-  assert.equal(changed[0].label, '+Z sensor · kanan');
-  // Selecting another mounting changes labels, not the telemetry quaternion basis.
-  assert.deepEqual(changed.map((axis) => axis.direction), axes.map((axis) => axis.direction));
+  assert.deepEqual(axes.map(axis => axis.label), ['+X · kanan', '+Y · depan', '+Z · atas']);
+  assert.deepEqual(axes.map(axis => axis.direction), [[1,0,0],[0,1,0],[0,0,1]]);
+  assert.deepEqual(rocketAxes({ noseAxis: -1, rightAxis: 3 }), axes);
+  assert.deepEqual(rocketAxes(), axes);
 });
 
-test('all 24 valid signed mounting pairs label the same basis used by firmware', () => {
-  const vector = (axis) => [1, 2, 3].map((index) => Math.abs(axis) === index ? Math.sign(axis) : 0);
-  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+test('calibration pose names match positive right/forward/up and start with the upright pose', async () => {
+  const { FACES, faceDirection } = await import(typesUrl);
+  assert.equal(FACES[0], 'ZP');
+  assert.deepEqual(FACES.map(faceDirection), ['atas','bawah','depan','belakang','kanan','kiri']);
+  const legacy = state(); delete legacy.orientationFrame;
+  assert.ok(parse(legacy));
+  assert.equal(parse({ ...state(), orientationFrame: 'unknown' }), null);
+});
+
+test('the scene maps RFU directions to screen-right, forward and vertical without reflecting axes', () => {
+  const q = new Quaternion(...RFU_TO_SCENE);
+  assert.ok(new Vector3(1,0,0).applyQuaternion(q).distanceTo(new Vector3(1,0,0)) < 1e-6);
+  assert.ok(new Vector3(0,1,0).applyQuaternion(q).distanceTo(new Vector3(0,0,-1)) < 1e-6);
+  assert.ok(new Vector3(0,0,1).applyQuaternion(q).distanceTo(new Vector3(0,1,0)) < 1e-6);
+  // Positive yaw turns body-right towards body-forward; the up axis stays fixed.
+  const yaw = new Quaternion().setFromAxisAngle(new Vector3(0,0,1), Math.PI / 2);
+  assert.ok(new Vector3(1,0,0).applyQuaternion(yaw).applyQuaternion(q).distanceTo(new Vector3(0,0,-1)) < 1e-6);
+  assert.ok(new Vector3(0,0,1).applyQuaternion(yaw).applyQuaternion(q).distanceTo(new Vector3(0,1,0)) < 1e-6);
+});
+
+test('all 24 sensor mounts preserve up/right and a right-handed forward axis', () => {
   let combinations = 0;
   for (const noseAxis of [-3,-2,-1,1,2,3]) for (const rightAxis of [-3,-2,-1,1,2,3]) {
     if (Math.abs(noseAxis) === Math.abs(rightAxis)) continue;
     ++combinations;
-    const right = vector(rightAxis), nose = vector(noseAxis);
-    const rows = [right, nose, cross(right, nose)];
-    const axes = rocketAxes({ noseAxis, rightAxis });
-    for (const axis of axes) {
-      const [, sign, name] = axis.label.match(/^([+−])([XYZ]) sensor/);
-      const sensorVector = vector(('XYZ'.indexOf(name) + 1) * (sign === '+' ? 1 : -1));
-      const modelVector = rows.map((row) => row.reduce((sum, n, i) => sum + n * sensorVector[i], 0));
-      assert.deepEqual(modelVector, axis.direction);
-    }
-  }
-  assert.equal(combinations, 24);
-  for (const mount of [undefined, { noseAxis: 3, rightAxis: -3 }, { noseAxis: 0, rightAxis: 1 }, { noseAxis: Infinity, rightAxis: 1 }]) {
-    assert.equal(validSensorMount(mount), false);
-    assert.match(rocketAxes(mount)[1].label, /model/);
-  }
-});
-
-test('changing nose from +Z to +Y physically rotates the mounting preview', () => {
-  const preview = (mount) => {
-    const basis = sensorMountBasis(mount);
-    const matrix = new Matrix4().makeBasis(new Vector3(...basis.right), new Vector3(...basis.nose), new Vector3(...basis.third));
-    const rotation = new Quaternion().setFromRotationMatrix(matrix);
-    return new Vector3(0, 1, 0).applyQuaternion(rotation);
-  };
-  assert.ok(preview({ noseAxis: 3, rightAxis: 1 }).distanceTo(new Vector3(0, 0, 1)) < 1e-6);
-  assert.ok(preview({ noseAxis: 2, rightAxis: 1 }).distanceTo(new Vector3(0, 1, 0)) < 1e-6);
-});
-
-test('Three.js mounting preview aligns nose and right on all signed sensor axes', () => {
-  for (const noseAxis of [-3,-2,-1,1,2,3]) for (const rightAxis of [-3,-2,-1,1,2,3]) {
-    if (Math.abs(noseAxis) === Math.abs(rightAxis)) continue;
     const basis = sensorMountBasis({ noseAxis, rightAxis });
-    const matrix = new Matrix4().makeBasis(new Vector3(...basis.right), new Vector3(...basis.nose), new Vector3(...basis.third));
+    const matrix = new Matrix4().makeBasis(new Vector3(...basis.right), new Vector3(...basis.forward), new Vector3(...basis.up));
     assert.ok(Math.abs(matrix.determinant() - 1) < 1e-6);
     const rotation = new Quaternion().setFromRotationMatrix(matrix);
-    assert.ok(new Vector3(0, 1, 0).applyQuaternion(rotation).distanceTo(new Vector3(...basis.nose)) < 1e-6);
-    assert.ok(new Vector3(1, 0, 0).applyQuaternion(rotation).distanceTo(new Vector3(...basis.right)) < 1e-6);
+    const expectedUp = new Vector3().setComponent(Math.abs(noseAxis)-1, Math.sign(noseAxis));
+    const expectedRight = new Vector3().setComponent(Math.abs(rightAxis)-1, Math.sign(rightAxis));
+    assert.ok(new Vector3(0,0,1).applyQuaternion(rotation).distanceTo(expectedUp) < 1e-6);
+    assert.ok(new Vector3(1,0,0).applyQuaternion(rotation).distanceTo(expectedRight) < 1e-6);
+    const front = new Vector3(0,1,0).applyQuaternion(rotation);
+    assert.ok(front.clone().cross(expectedUp).distanceTo(expectedRight) < 1e-6);
   }
-  assert.equal(sensorMountBasis({ noseAxis: 2, rightAxis: -2 }), null);
+  assert.equal(combinations,24);
+  for (const mount of [undefined, { noseAxis: 3, rightAxis: -3 }, { noseAxis: 0, rightAxis: 1 }]) {
+    assert.equal(validSensorMount(mount),false);
+    assert.equal(sensorMountBasis(mount),null);
+  }
+});
+
+test('changing the nose mounting physically rotates the +Z rocket axis', () => {
+  const preview = mount => {
+    const basis = sensorMountBasis(mount);
+    return new Vector3(0,0,1).applyMatrix4(new Matrix4().makeBasis(
+      new Vector3(...basis.right),new Vector3(...basis.forward),new Vector3(...basis.up)));
+  };
+  assert.ok(preview({noseAxis:3,rightAxis:1}).distanceTo(new Vector3(0,0,1)) < 1e-6);
+  assert.ok(preview({noseAxis:2,rightAxis:1}).distanceTo(new Vector3(0,1,0)) < 1e-6);
 });

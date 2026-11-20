@@ -6,61 +6,114 @@ board harus disesuaikan sebelum build dan flash.
 
 Firmware `imu3d-v2` mengirim data sensor dan orientasi relatif melalui USB
 Serial ke aplikasi desktop GCS. Telemetri sensor juga dikirim lewat Ebyte
-E22-400T30D pada UART2, dalam mode transparan setiap dua detik saat AUX siap.
-Ini firmware **sensor TX**, dengan marker startup `E22 SENSOR TELEMETRY ROLE=TX`.
+E32-433T30D pada UART2, dalam mode NORMAL/transparan dengan interval minimal dua detik.
+Setiap kiriman radio membawa rata-rata pembacaan sensor sejak kiriman lokal
+berhasil sebelumnya; pembacaan dan filter orientasi terus berjalan saat radio sibuk.
+Ini firmware **sensor TX**, dengan marker startup `E32-433T30D SENSOR TELEMETRY ROLE=TX`.
 Kode receiver berada di [hardware/gcs/firmware](../../gcs/firmware/README.md).
 Pengiriman ESP-NOW belum diimplementasikan.
 Lihat [panduan kalibrasi enam pose dan logika 3D](../../../docs/imu-orientation.md)
 untuk menentukan acuan awal, pemasangan sumbu, dan membaca profil tersimpan.
+Konvensi sumbu: **+X kanan, +Y depan, +Z atas**; arah negatifnya kiri,
+belakang, dan bawah. Quaternion USB ditandai `orientationFrame:"RFU"`.
 
-## Transmitter LoRa Ebyte E22-400T30D
+## Transmitter LoRa Ebyte E32-433T30D
 
-Konfigurasi ESP32 di `include/lora_radio.h`: UART **9600 baud 8N1**, RX **GPIO16**,
-TX **GPIO17**, AUX **GPIO23**, interval **2000 ms**. Sambungkan GPIO16 ke TXD
-E22, GPIO17 ke RXD E22, AUX ke GPIO23, dan GND bersama. Sensor tetap di GPIO21/22.
-USB Serial tetap **115200 baud**.
+Driver bersama berada di `hardware/shared/e32_radio.h`, diikutkan melalui
+`include/lora_radio.h`. UART **9600 baud 8N1**, RX **GPIO16**, TX **GPIO17**,
+M0 **GPIO25**, M1 **GPIO26**, AUX **GPIO27 / D27**, interval **2000 ms**. Sambungkan GPIO16 ke TXD
+E32, GPIO17 ke RXD E32, M0 ke GPIO25, M1 ke GPIO26, AUX ke GPIO27, dan GND bersama. Sensor
+tetap di GPIO21/22. USB Serial tetap **115200 baud**.
 
-Mode pin E22 (berbeda dari E32):
+Build TX saat ini memakai `-DE32_AUX_PIN=27`, sesuai koreksi wiring terbaru:
+**AUX TX ke D27/GPIO27**, sama seperti receiver. Pemeriksaan AUX aktif;
+TX menunggu HIGH stabil minimal 2 ms sebelum mengirim.
+Untuk pengujian tanpa AUX, ubah flag menjadi `-DE32_AUX_PIN=-1`.
+`-DBOARD_POP_TEST_INPUT_PIN=-1` tetap dipertahankan; GPIO14 tidak dikonfigurasi
+sebagai tombol. CALIBRATION GPIO13 masih INPUT_PULLUP; POP_TEST_OUT GPIO19 boot LOW.
+Command GCS dapat memberi pulsa HIGH 1–10000 ms (default 200 ms), ditutup timer
+ESP32 dan dibalas ACK radio. Lihat [LoRa dua arah](../../../docs/lora-bidirectional.md).
+Lihat [panduan pin](../../../docs/hardware-pinout.md).
 
-| Keperluan | M0 | M1 |
-| --- | --- | --- |
-| PING / telemetri normal | GND | GND |
-| Baca/tulis konfigurasi | GND | 3V3 |
-| Tidur, bukan konfigurasi | 3V3 | 3V3 |
+M0/M1 dapat langsung ke GND untuk NORMAL tetap, asalkan dilepas dari
+GPIO25/26. Dalam wiring itu jangan gunakan perintah pergantian mode; mode
+yang dicetak firmware tidak dapat memverifikasi level pin modul yang dilepas.
 
-Matikan daya sebelum mengubah jumper. VCC E22 dapat menggunakan 3,3 V yang
-stabil untuk pengujian, tetapi E22-400T30D adalah modul 30 dBm dengan arus TX
-sekitar 610 mA pada manual resmi. Untuk pengiriman radio, disarankan catu
+Mode pin E32 (urutan M0,M1):
+
+| Keperluan | M0 | M1 | Perintah |
+| --- | --- | --- | --- |
+| Telemetri NORMAL | LOW | LOW | `LORA_MODE:NORMAL` |
+| Wake-up | HIGH | LOW | `LORA_MODE:WAKEUP` |
+| RX hemat daya | LOW | HIGH | `LORA_MODE:POWER_SAVING` atau `WOR` |
+| Tidur/konfigurasi | HIGH | HIGH | `LORA_MODE:SLEEP` atau `CONFIG` |
+
+Pada terminal monitor USB, kirim `LORA_HELP` untuk bantuan atau
+`LORA_PINS:0,0`, `LORA_PINS:1,0`, `LORA_PINS:0,1`, `LORA_PINS:1,1` untuk memilih
+kombinasi pin. E32 memakai **CONFIG=1,1**, bukan 0,1 seperti E22.
+Pergantian menunggu guard 2 detik sebelum mengubah pin dan 1 detik setelahnya,
+tanpa memblokir pembacaan sensor. Tunggu `phase=IDLE` melalui `LORA_STATUS`
+sebelum meminta mode lain. Telemetri radio otomatis hanya berjalan pada NORMAL;
+pembacaan sensor dan telemetri USB tetap berjalan di semua mode. Perintah ini
+hanya lokal dan tidak membaca/menulis parameter biner modul.
+
+Matikan daya sebelum mengubah wiring. VCC E32 memiliki rentang 3,3–5,2 V; E32-433T30D adalah modul 30 dBm dengan arus TX
+sekitar 610 mA pada manual Ebyte. Untuk pengiriman radio, disarankan catu
 5 V teregulasi dengan kapasitas setidaknya 1 A untuk modul dan margin yang cukup.
 Jangan menganggap regulator 3V3 ESP32 mampu menyuplai beban ini. Sinyal UART,
 AUX, M0/M1 tetap berlevel **3,3 V**, dan MPU/BMP tetap pada catu breakout yang sesuai.
 
-Firmware telemetri tidak mengubah register E22. Kedua modul harus cocok dalam
-alamat, NETID, channel, air rate dan key; UART masing-masing harus 9600 8N1,
-mode TRANSPARENT, RSSI byte OFF dan repeater OFF. Pengaturan E22 dilakukan
-terpisah dari firmware aplikasi; profil yang sudah berhasil dipakai tidak
-perlu ditulis ulang. Lihat [panduan E22](../../../docs/lora-e22.md).
+Firmware telemetri tidak mengubah parameter tersimpan di E32. Pasang modul
+fisik **E32-433T30D pada TX dan RX**; perubahan firmware ESP32 tidak mengubah
+modul E22 menjadi E32. Cocokkan alamat, channel, air rate dan FEC kedua modul;
+UART masing-masing harus 9600 8N1 dan transmisi TRANSPARENT. Profil acuan:
+alamat `0x0000`, channel `0x17` (433 MHz), air rate 2,4 kbps. E32 tidak memakai
+register NETID/key/RSSI tambahan E22. Lihat [panduan E32](../../../docs/lora-e32.md).
 
-Startup berisi `# E22 SENSOR TELEMETRY ROLE=TX` dan `# LORA E22 UART siap`. Kiriman dilakukan hanya saat AUX HIGH
-stabil minimal 2 ms dan buffer UART tersedia. AUX LOW menunda kiriman tanpa
-memblokir sampling. Pesan pemeriksaan wiring hanya muncul setelah AUX belum
-siap terus-menerus 5 detik. Log kiriman berisi
-`# E22 SENSOR TX packet=1 bytes=... imu=OK baro=OK | UART lokal, bukan ACK`.
-`baro=UNAVAILABLE` berarti tekanan tidak tersedia; bukti penerimaan radio ada
+Startup berisi `# E32-433T30D SENSOR TELEMETRY ROLE=TX` dan `# LORA E32-433T30D UART siap`.
+Pada build tanpa AUX, driver menunggu 1 detik saat startup dan menjaga jarak TX minimal
+2 detik untuk profil radio **2,4 kbps** serta frame maksimum 240 byte. Guard
+waktu tidak memverifikasi kesiapan modul dan tidak menjamin tidak ada paket
+hilang. Catu yang tidak stabil tetap perlu diperbaiki. Pada build bawaan dengan AUX GPIO27, HIGH stabil minimal 2 ms disyaratkan
+sebelum TX/pergantian mode. Log kiriman berisi
+`# E32 SENSOR TX packet=1 bytes=... imu=OK baro=OK average=ON imu_samples=... pressure_samples=... window_ms=... | UART lokal, bukan ACK`.
+`baro=UNAVAILABLE` berarti tidak ada pembacaan tekanan valid dalam jendela; bukti penerimaan radio ada
 pada JSON dan penghitung frame di receiver.
 
-Frame JSON sensor dibatasi aplikasi sampai 240 byte termasuk newline. E22
-memiliki buffer modul 1000 byte dan sub-packet RF 32/64/128/240 byte, sehingga
+Frame JSON sensor dibatasi aplikasi sampai 240 byte termasuk newline. E32
+memiliki buffer modul 512 byte dan paket RF 58 byte, sehingga
 receiver harus tetap menyusun stream sampai newline. IMU menargetkan 100 Hz,
-BMP280 10 Hz dan USB telemetry 10 Hz. Sampel IMU tidak valid/kedaluwarsa tidak
-dikirim dan muncul pesan `menunggu sampel MPU6050 valid`; barometer gagal
-menghasilkan `pressure:null`. Format radio ada di `include/sensor_telemetry.h`:
+BMP280 10 Hz dan USB telemetry 10 Hz. Pengiriman memerlukan IMU yang masih
+valid dan baru; jika tidak, muncul pesan `menunggu sampel MPU6050 valid`.
+Tidak ada pembacaan barometer valid dalam satu jendela menghasilkan
+`pressure:null`. Format radio ada di `include/sensor_telemetry.h`:
 `temperature` adalah suhu internal MPU6050 (°C), `pressure` dari BMP280 (hPa),
 `accelX/Y/Z` dalam m/s², dan `gyroX/Y/Z` dalam rad/s.
 
+Akumulasi ada di `include/telemetry_average.h`. Setiap pembacaan IMU valid
+menambah suhu dan enam komponen accel/gyro; tekanan ditambahkan sekali per
+pembacaan BMP valid, dengan penghitung terpisah. Nilai invalid tidak masuk
+pembilang maupun penyebut. Jumlah dan total memakai memori tetap, tanpa
+antrean yang bertambah selama AUX LOW atau mode belum NORMAL.
+
+Rata-rata baru dihapus setelah `sendLine()` menerima seluruh frame ke UART
+lokal. Encode atau penulisan gagal mempertahankan akumulasi dan data baru
+terus bergabung sampai percobaan berikutnya berhasil. `timestampMs` adalah
+akhir jendela; `imuValid`/`calibrated` tetap status boolean, bukan rata-rata.
+Durasi jendela dan jumlah masing-masing sampel dicetak di log TX USB agar
+payload JSON tetap kompatibel dan maksimal 240 byte. Jendela bisa lebih
+panjang dari dua detik jika radio sibuk. Pembacaan tekanan sebelum sampel IMU
+pertama tidak dimasukkan. Jendela direset saat IMU gagal dibaca atau profil
+kalibrasi diganti/dihapus agar tidak mencampur periode atau koreksi berbeda.
+
+USB 10 Hz dan filter orientasi memakai sampel langsung. Quaternion tidak
+dirata-ratakan. Rata-rata radio merangkum pembacaan, bukan menyimpan setiap
+nilai asli atau lonjakan sesaat. Paket masih dapat hilang di udara karena
+belum ada ACK/pengiriman ulang; sukses UART lokal bukan bukti penerimaan RF.
+
 Radio tahap ini belum meneruskan quaternion, status/profil IMU atau command
 kalibrasi. Kalibrasi dan 3D tetap tersedia lewat USB langsung ke transmitter.
-Manual yang berlaku: [E22-400T30D resmi](../../../docs/E22-400T30D_UserManual_EN_official.pdf).
+Manual yang berlaku: [Ebyte E32-433T30D](https://fixaj.com/wp-content/uploads/2021/08/E32-433T30D_Usermanual_EN_v1.91.pdf).
 
 ## Isi firmware
 
@@ -134,8 +187,9 @@ Untuk membangun atau mem-flash pasangan sensor TX/RX dari root repository:
 ./hardware/telemetry.sh flash rx /dev/ttyACM0
 ```
 
-Sesuaikan port dengan board masing-masing. Profil E22 yang sudah berhasil
-dipakai tetap tersimpan; M0 dan M1 kedua modul tetap GND untuk telemetri.
+Sesuaikan port dengan board masing-masing. Profil E32 yang sudah berhasil
+dipakai tetap tersimpan; GPIO25/26 otomatis memilih mode NORMAL saat boot.
+Sertakan `hardware/shared` jika menyalin firmware ke komputer lain.
 
 Untuk mengerjakan transmitter saja dari folder ini:
 
@@ -186,7 +240,7 @@ mengunduh platform dan toolchain.
 Referensi: [board ESP32 Dev Module](https://docs.platformio.org/en/stable/boards/espressif32/esp32dev.html)
 dan [panduan Arduino ESP32 di PlatformIO](https://docs.platformio.org/en/stable/tutorials/espressif32/arduino_debugging_unit_testing.html).
 
-Tes driver, orientasi, dan alur JSON sensor TX → fragmen UART → parser RX:
+Tes driver, kontrol mode GPIO, orientasi, dan alur JSON sensor TX → fragmen UART → parser RX:
 jalankan `./test-host.sh` (memerlukan `g++` dan Python 3). Tes memastikan field
 dan satuan untuk Tauri, tekanan `null`, serta penolakan nilai non-finite dan
 frame terpotong. Tes tidak menggantikan pemeriksaan sensor/radio pada perangkat.
@@ -195,3 +249,13 @@ Driver sensor: `src/mpu6050_reader.cpp` dan
 [Adafruit BMP280](https://github.com/adafruit/Adafruit_BMP280_Library).
 Rincian hardware: [datasheet BMP280](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmp280-ds001.pdf)
 dan [pinout MPU6050](https://learn.adafruit.com/mpu6050-6-dof-accelerometer-and-gyro/pinouts).
+
+## Menyamakan konfigurasi tersimpan E32
+
+Gunakan `./hardware/telemetry.sh setup tx /dev/ttyACM0` dari root
+repository. Perintah memasang konfigurator sementara pada ESP32, menyimpan
+profil E32 dan membuka monitor. **M0 harus ke GPIO25, M1 ke GPIO26, AUX ke
+GPIO27; lepaskan M0/M1 dari GND langsung sebelum setup.** Tunggu
+`E32_SETUP SUCCESS`, lalu pasang kembali firmware telemetri memakai `flash`.
+Lakukan setup pada kedua modul; lihat [panduan setup E32](../../../docs/lora-e32.md#setup-parameter-e32-lewat-esp32)
+untuk wiring, profil dan contoh hasil verifikasi.

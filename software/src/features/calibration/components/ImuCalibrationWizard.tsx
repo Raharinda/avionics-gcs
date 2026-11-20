@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FACES, faceLabel, type FaceId } from "../../../types/imu";
+import { FACES, faceLabel, faceDirection, type FaceId } from "../../../types/imu";
 import type { useImuCalibration } from "../hooks/useImuCalibration";
 import { RocketViewport } from "../../flight/components/RocketViewport";
 import { calibrationHint } from "../../../data/calibrationHint";
@@ -14,7 +14,7 @@ type Props = {
 };
 export function ImuCalibrationWizard({ controller: imu, connected, telemetry, receivedAt, onClose }: Props) {
     const telemetryFresh = useTelemetryFreshness(receivedAt);
-    const [selectedFace, setSelectedFace] = useState<FaceId>("XP");
+    const [selectedFace, setSelectedFace] = useState<FaceId>("ZP");
     useEffect(() => { if (imu.progress.face)
         setSelectedFace(imu.progress.face); }, [imu.progress.face]);
     const disabled = !connected || imu.pending || !imu.state?.imuReady;
@@ -34,7 +34,8 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
       <div className="imu-wizard-grid">
         <div>
           <h3>1. Kalibrasi ±X, ±Y, ±Z</h3>
-          <p>Ikuti tanda sumbu pada <b>papan sensor</b>. Posisikan sumbu ke atas → klik Rekam → tahan diam sekitar 2 detik. Putar ke posisi berikutnya setelah pose selesai. Goyangan besar mengulang hitungan sampel.</p>
+          <p>Posisi normal: <b>+X kanan, +Y depan, +Z atas</b>; arah negatifnya kiri, belakang, dan bawah. Pasang sensor mengikuti tanda sumbu ini.</p>
+          <p>Untuk kalibrasi enam posisi, putar papan agar <b>sumbu yang dipilih menghadap atas</b> secara bergantian. Klik Rekam, lalu tahan diam sekitar 2 detik. Contoh +Y: arah depan papan diputar menghadap langit. Goyangan besar mengulang hitungan sampel.</p>
           <div className="imu-board-preview"><RocketViewport mode="sensor" sensorFace={selectedFace}/></div>
           {connected && <div className={`imu-pose-feedback ${hint.tone}`} role="status">
             <b>{imu.progress.face ? `Sedang merekam ${faceLabel(imu.progress.face)}` : `Panduan ${faceLabel(selectedFace)} ke atas`}</b>
@@ -47,7 +48,7 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
           </div>}
           <div className="imu-faces">
             {FACES.map((face) => <button key={face} type="button" className={`${selectedFace === face ? "selected" : ""} ${imu.progress.completed.includes(face) ? "complete" : ""}`} disabled={imu.pending || imu.progress.face !== null} onClick={() => setSelectedFace(face)}>
-              <b>{faceLabel(face)} ke atas</b><small>{imu.progress.completed.includes(face) ? "Terekam ✓" : "Belum direkam"}</small>
+              <b>{faceLabel(face)} · {faceDirection(face)}</b><small>Hadapkan sisi {faceDirection(face)} ke atas</small><small>{imu.progress.completed.includes(face) ? "Terekam ✓" : "Belum direkam"}</small>
             </button>)}
           </div>
           {imu.progress.face && <div className="imu-progress" role="status">
@@ -67,7 +68,7 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
           <p>Setelah kalibrasi selesai, pegang roket pada pose awal yang kamu inginkan. Tahan diam lalu tetapkan acuan. Pose ini menjadi posisi nol model 3D.</p>
           <button className="calibration-start imu-reference-button" type="button" disabled={disabled || !imu.state?.calibrated || imu.progress.active} onClick={() => { if (imu.state)
             void imu.setReference(imu.state.noseAxis, imu.state.rightAxis); }}>Tetapkan posisi sekarang sebagai acuan</button>
-          <p className="imu-note">Tampilan live mengukur perubahan dari pose nol ini.</p>
+          <p className="imu-note">Tampilan live mengukur perubahan dari pose nol ini dengan sumbu X kanan, Y depan, dan Z atas. Yaw adalah rotasi terhadap sumbu Z.</p>
           <p className="imu-reference-status">{imu.state?.referenceSet ? "✓ Acuan aktif pada sesi ini" : "Acuan sesi belum ditetapkan"}</p>
           <p className="imu-note">Profil dan catatan pose awal tersimpan setelah ESP32 mengonfirmasi. Setelah reboot, tetapkan acuan lagi. Yaw relatif dapat drift; arah kompas dan posisi XYZ dalam meter tidak diukur.</p>
           {imu.state?.profile && <div className="imu-saved-profile">

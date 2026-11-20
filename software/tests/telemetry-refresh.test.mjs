@@ -10,10 +10,11 @@ async function compile(path) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
 }
-const [sampledSource, gridSource, telemetrySource] = await Promise.all([
+const [sampledSource, gridSource, telemetrySource, packetLossSource] = await Promise.all([
   compile('../src/features/telemetry/hooks/useSampledValue.ts'),
   compile('../src/features/telemetry/components/TelemetrySensorGrid.tsx'),
   compile('../src/features/telemetry/hooks/useTelemetry.ts'),
+  compile('../src/data/packetLoss.ts'),
 ]);
 function load(source, dependencies, globals = {}) {
   const exports = {};
@@ -74,9 +75,11 @@ test('barometer follows incoming packets while gyro/accelerometer numbers and ch
   const { TelemetrySensorGrid } = load(gridSource, {
     react: r.react, 'react/jsx-runtime': jsxRuntime,
     './SensorCard': { SensorCard: () => null }, '../hooks/useSampledValue': sampled,
+    './AttitudeCard': { AttitudeCard: props => ({ props: { title: 'Attitude', ...props } }) },
+    '../../../data/dummyTelemetry': { DUMMY_SOURCE: 'Dummy data' },
   });
   let latest = point(1), series = [latest];
-  const render = () => Object.fromEntries(r.render(() => TelemetrySensorGrid({ latestTelemetry: latest, series, darkMode: false }))
+  const render = () => Object.fromEntries(r.render(() => TelemetrySensorGrid({ latestTelemetry: latest, series, dataSource: 'COM4 · USB', darkMode: false, hasTelemetry: true }))
     .props.children.map(card => [card.props.title, card.props]));
   render();
   for (let index = 2; index <= 10; index++) {
@@ -104,10 +107,12 @@ test('raw telemetry, rocket orientation, timestamps and packet counts update wit
   const r = runtime();
   t.after(() => r.dispose());
   let listener;
+  const packetLoss = load(packetLossSource, {});
   const { useTelemetry } = load(telemetrySource, {
     react: r.react,
     '@tauri-apps/api/event': { listen: async (_name, callback) => { listener = callback; return () => { listener = null; }; } },
     '../../../data/dummyTelemetry': { DUMMY_SOURCE: 'Dummy data' },
+    '../../../data/packetLoss': packetLoss,
   }, { window: r.window, Date });
   let connected = true;
   const render = () => r.render(() => useTelemetry({ connected, dataSource: 'COM4 · USB' }));

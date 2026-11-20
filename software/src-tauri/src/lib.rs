@@ -5,14 +5,32 @@ use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 use std::fs;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{Emitter, State};
 
+const MAX_SERIAL_BUFFER_BYTES: usize = 8192;
+
+type SharedCommandPort = Arc<Mutex<Option<(u64, Arc<Mutex<Box<dyn SerialPort>>>)>>>;
+
+struct ListenerHandle {
+    stop: Arc<AtomicBool>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
 struct SerialState {
-    stop: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
-    command_port: Mutex<Option<Arc<Mutex<Box<dyn SerialPort>>>>>,
+    next_session_id: AtomicU64,
+    listener: Mutex<Option<ListenerHandle>>,
+    command_port: SharedCommandPort,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerialDisconnectEvent {
+    source_port: String,
+    reason: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -55,6 +73,10 @@ struct RawTelemetryMessage {
     reference_set: bool,
     #[serde(default)]
     orientation: Option<[f64; 4]>, // firmware quaternion [w, x, y, z]
+    #[serde(default, rename = "orientationFrame")]
+    orientation_frame: Option<String>,
+    #[serde(default)]
+    rssi: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -81,6 +103,7 @@ struct TelemetryMessage {
     #[serde(rename = "referenceSet")]
     reference_set: bool,
     orientation: Option<[f64; 4]>,
+    rssi: Option<f64>,
     #[serde(rename = "sourcePort")]
     source_port: String,
 }
@@ -97,7 +120,8 @@ impl TelemetryMessage {
         let pressure = raw.pressure.filter(|value| value.is_finite() && *value > 0.0);
         let altitude = altitude_reference.read(pressure);
         let orientation = raw.orientation.filter(|_| raw.calibrated && raw.reference_set)
-            .and_then(attitude::normalize_quaternion);
+            .and_then(|q| attitude::normalize_rfu(q, raw.orientation_frame.as_deref()));
+        let rssi = raw.rssi.filter(|value| value.is_finite());
         let [roll, pitch, yaw] = orientation.map(attitude::euler_degrees).unwrap_or([
             raw.accel_y.atan2(raw.accel_z).to_degrees(),
             (-raw.accel_x).atan2(raw.accel_y.hypot(raw.accel_z)).to_degrees(), 0.0,
@@ -107,7 +131,7 @@ impl TelemetryMessage {
             accel_x: raw.accel_x, accel_y: raw.accel_y, accel_z: raw.accel_z,
             roll, pitch, yaw, timestamp_ms: raw.timestamp_ms,
             imu_valid: true, calibrated: raw.calibrated,
-            reference_set: orientation.is_some(), orientation, source_port: String::new(),
+            reference_set: orientation.is_some(), orientation, rssi, source_port: String::new(),
         })
     }
 }
@@ -144,54 +168,70 @@ fn start_serial_listener(
             format!("Failed to prepare serial commands: {error}")
         })?));
 
-    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let session_id = state.next_session_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
-    {
-        let mut current = state
-            .stop
-            .lock()
-            .map_err(|_| "Serial state unavailable".to_string())?;
-        *current = Some(stop);
-    }
+    let shared_command_port = Arc::clone(&state.command_port);
     {
         let mut current = state
             .command_port
             .lock()
             .map_err(|_| "Serial state unavailable".to_string())?;
-        *current = Some(command_port);
+        *current = Some((session_id, command_port));
     }
 
     let reader_port_name = port_name.clone();
-    thread::spawn(move || {
-        read_serial_lines(port, thread_stop, app, reader_port_name);
+    let handle = thread::spawn(move || {
+        read_serial_lines(
+            port,
+            thread_stop,
+            app,
+            reader_port_name,
+            session_id,
+            shared_command_port,
+        );
     });
+    {
+        let mut current = state
+            .listener
+            .lock()
+            .map_err(|_| "Serial state unavailable".to_string())?;
+        *current = Some(ListenerHandle {
+            stop,
+            thread: Some(handle),
+        });
+    }
 
     Ok(format!("Listening on {port_name}"))
 }
 
 #[tauri::command]
 fn stop_serial_listener(state: State<'_, SerialState>) -> Result<(), String> {
-    stop_current_listener(&state)?;
-    let mut command_port = state
-        .command_port
-        .lock()
-        .map_err(|_| "Serial state unavailable".to_string())?;
-    *command_port = None;
+    stop_current_listener(&state)
+}
+
+fn validate_serial_command(command: &str) -> Result<(), &'static str> {
+    if command.contains(['\r', '\n']) {
+        return Err("Serial command must be a single line");
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn send_serial_command(command: String, state: State<'_, SerialState>) -> Result<(), String> {
+    validate_serial_command(&command)?;
     let command_port = state
         .command_port
         .lock()
         .map_err(|_| "Serial state unavailable".to_string())?
-        .clone()
+        .as_ref()
+        .map(|(_, port)| Arc::clone(port))
         .ok_or_else(|| "Serial port is not connected".to_string())?;
     let mut port = command_port
         .lock()
         .map_err(|_| "Serial command port unavailable".to_string())?;
     port.write_all(format!("{command}\n").as_bytes())
+        .and_then(|_| port.flush())
         .map_err(|error| format!("Failed to send serial command: {error}"))
 }
 
@@ -231,45 +271,69 @@ fn extract_json(raw: &str) -> Option<&str> {
     (end >= start).then(|| &raw[start..=end])
 }
 
+fn drain_complete_lines(buffer: &mut Vec<u8>) -> (Vec<String>, bool) {
+    let mut lines = Vec::new();
+    while let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
+        let line = buffer.drain(..=newline).collect::<Vec<_>>();
+        let raw = String::from_utf8_lossy(&line).trim().to_owned();
+        if !raw.is_empty() {
+            lines.push(raw);
+        }
+    }
+    let discarded_oversized = if buffer.len() > MAX_SERIAL_BUFFER_BYTES {
+        buffer.clear();
+        true
+    } else {
+        false
+    };
+    (lines, discarded_oversized)
+}
+
 fn stop_current_listener(state: &SerialState) -> Result<(), String> {
+    {
+        let mut command_port = state
+            .command_port
+            .lock()
+            .map_err(|_| "Serial state unavailable".to_string())?;
+        *command_port = None;
+    }
     let current = state
-        .stop
+        .listener
         .lock()
         .map_err(|_| "Serial state unavailable".to_string())?
         .take();
-    if let Some(stop) = current {
-        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Some(mut listener) = current {
+        listener.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = listener.thread.take() {
+            let _ = handle.join();
+        }
     }
     Ok(())
 }
 
 fn read_serial_lines(
     mut port: Box<dyn SerialPort>,
-    stop: Arc<std::sync::atomic::AtomicBool>,
+    stop: Arc<AtomicBool>,
     app: tauri::AppHandle,
     port_name: String,
+    session_id: u64,
+    command_port: SharedCommandPort,
 ) {
     let mut altitude_reference = altitude::AltitudeReference::default();
     let mut buffer = Vec::new();
     let mut chunk = [0_u8; 256];
-    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+    while !stop.load(Ordering::Relaxed) {
         match port.read(&mut chunk) {
-            Ok(0) => continue,
+            Ok(0) => {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            }
             Ok(count) => {
                 buffer.extend_from_slice(&chunk[..count]);
-                if buffer.len() > 8192 {
-                    buffer.clear();
-                    let _ = app.emit("serial_error", "Discarded oversized Serial frame");
-                    continue;
-                }
-                while let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
-                    let line = buffer.drain(..=newline).collect::<Vec<_>>();
-                    let raw = String::from_utf8_lossy(&line).trim().to_owned();
-                    if raw.is_empty() {
-                        continue;
-                    }
+                let (lines, discarded_oversized) = drain_complete_lines(&mut buffer);
+                for raw in lines {
                     let _ = app.emit("serial_line", raw.clone());
-                    if raw.starts_with("IMU_STATE:") || raw.starts_with("CALIBRATION_") || raw.starts_with("REFERENCE_SET:") {
+                    if raw.starts_with("IMU_STATE:") || raw.starts_with("CALIBRATION_") || raw.starts_with("REFERENCE_SET:") || raw.starts_with("D19_") {
                         let _ = app.emit("serial_control", SerialControlLine { source_port: port_name.clone(), line: raw.clone() });
                     }
                     if !raw.starts_with('{') { continue; }
@@ -292,9 +356,33 @@ fn read_serial_lines(
                         }
                     }
                 }
+                if discarded_oversized {
+                    let _ = app.emit("serial_error", "Discarded oversized Serial frame");
+                }
             }
             Err(error) if error.kind() == std::io::ErrorKind::TimedOut => continue,
-            Err(_) => break,
+            Err(error) => {
+                if !stop.load(Ordering::Relaxed) {
+                    if let Ok(mut current) = command_port.lock() {
+                        if current.as_ref().is_some_and(|(id, _)| *id == session_id) {
+                            *current = None;
+                        }
+                    }
+                    let reason = error.to_string();
+                    let _ = app.emit(
+                        "serial_error",
+                        format!("Serial port {port_name} disconnected: {reason}"),
+                    );
+                    let _ = app.emit(
+                        "serial_disconnected",
+                        SerialDisconnectEvent {
+                            source_port: port_name,
+                            reason,
+                        },
+                    );
+                }
+                break;
+            }
         }
     }
 }
@@ -305,8 +393,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(SerialState {
-            stop: Mutex::new(None),
-            command_port: Mutex::new(None),
+            next_session_id: AtomicU64::new(0),
+            listener: Mutex::new(None),
+            command_port: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             list_serial_ports,
@@ -329,7 +418,7 @@ mod telemetry_tests {
             "accelX":0.0,"accelY":0.0,"accelZ":9.80665,
             "gyroX":0.0,"gyroY":0.0,"gyroZ":0.0,
             "timestampMs":351583,"imuValid":true,"calibrated":true,"referenceSet":true,
-            "orientation":[0.70710678,0.0,0.0,0.70710678]})
+            "orientation":[0.70710678,0.0,0.0,0.70710678],"orientationFrame":"RFU"})
     }
     fn convert(value: Value) -> Result<TelemetryMessage, &'static str> {
         convert_session(value, &mut altitude::AltitudeReference::default())
@@ -409,5 +498,48 @@ mod telemetry_tests {
 
         let mut restarted = altitude::AltitudeReference::default();
         assert_eq!(convert_session(value, &mut restarted).unwrap().altitude, Some(0.0));
+    }
+
+    #[test]
+    fn drain_complete_lines_preserves_complete_frames_before_discarding_oversized_tail() {
+        let mut buffer = b"{\"ok\":1}\n".to_vec();
+        buffer.extend(std::iter::repeat(b'x').take(MAX_SERIAL_BUFFER_BYTES + 10));
+        let (lines, discarded) = drain_complete_lines(&mut buffer);
+        assert_eq!(lines, vec!["{\"ok\":1}".to_string()]);
+        assert!(discarded);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn validate_serial_command_rejects_embedded_newlines() {
+        assert!(validate_serial_command("IMU_STATUS").is_ok());
+        assert!(validate_serial_command("IMU_STATUS\nCALIBRATE_RESET").is_err());
+        assert!(validate_serial_command("IMU_STATUS\r").is_err());
+    }
+
+    #[test]
+    fn stop_current_listener_joins_reader_thread_before_returning() {
+        let finished = Arc::new(AtomicBool::new(false));
+        let thread_finished = Arc::clone(&finished);
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let handle = thread::spawn(move || {
+            while !thread_stop.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(5));
+            }
+            thread::sleep(Duration::from_millis(20));
+            thread_finished.store(true, Ordering::Relaxed);
+        });
+        let state = SerialState {
+            next_session_id: AtomicU64::new(1),
+            listener: Mutex::new(Some(ListenerHandle {
+                stop,
+                thread: Some(handle),
+            })),
+            command_port: Arc::new(Mutex::new(None)),
+        };
+        stop_current_listener(&state).unwrap();
+        assert!(finished.load(Ordering::Relaxed));
+        assert!(state.listener.lock().unwrap().is_none());
     }
 }

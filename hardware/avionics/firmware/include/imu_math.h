@@ -64,11 +64,11 @@ inline bool valid_mount(int nose_axis, int right_axis) {
            std::abs(right_axis)>=1 && std::abs(right_axis)<=3 &&
            std::abs(nose_axis)!=std::abs(right_axis);
 }
-// Maps sensor coordinates to model coordinates: X right, Y nose, Z right-cross-nose.
+// Body frame: +X right, +Y forward, +Z up (rocket nose).
 inline Quaternion mounting_rotation(int nose_axis, int right_axis) {
     if (!valid_mount(nose_axis,right_axis)) return {};
-    const Vec right=axis_vector(right_axis), nose=axis_vector(nose_axis), back=cross(right,nose);
-    const float m[3][3]={{right[0],right[1],right[2]}, {nose[0],nose[1],nose[2]}, {back[0],back[1],back[2]}};
+    const Vec right=axis_vector(right_axis), up=axis_vector(nose_axis), forward=cross(up,right);
+    const float m[3][3]={{right[0],right[1],right[2]}, {forward[0],forward[1],forward[2]}, {up[0],up[1],up[2]}};
     Quaternion q;
     const float trace=m[0][0]+m[1][1]+m[2][2];
     if (trace>0) {

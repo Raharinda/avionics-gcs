@@ -53,11 +53,20 @@ int main() {
         if (!imu::valid_mount(nose,right)) continue;
         const auto q=imu::mounting_rotation(nose,right);
         const auto n=q.rotate(imu::axis_vector(nose)), r=q.rotate(imu::axis_vector(right));
-        near(n[0],0); near(n[1],1); near(n[2],0);
+        near(n[0],0); near(n[1],0); near(n[2],1);
         near(r[0],1); near(r[1],0); near(r[2],0);
     }
     assert(!imu::valid_mount(3,-3)); assert(!imu::valid_mount(0,1));
-    puts("PASS: every valid signed mounting pair maps nose/right to model Y/X");
+    puts("PASS: every valid signed mounting pair maps up/right to body Z/X");
+    same_rotation(imu::mounting_rotation(3,1),{});
+    const float half_turn=3.14159265359F/4;
+    const imu::Quaternion about_x(std::cos(half_turn),std::sin(half_turn),0,0);
+    const imu::Quaternion about_y(std::cos(half_turn),0,std::sin(half_turn),0);
+    const imu::Quaternion about_z(std::cos(half_turn),0,0,std::sin(half_turn));
+    near(about_x.rotate({{0,1,0}})[2],1);
+    near(about_y.rotate({{0,0,1}})[0],1);
+    near(about_z.rotate({{1,0,0}})[1],1);
+    puts("PASS: +X right, +Y forward, +Z up form a right-handed body frame");
 
     for (const int axis : {-3,-2,-1,1,2,3}) {
         const auto accel=imu::scaled(imu::axis_vector(axis),imu::gravity);
@@ -76,8 +85,8 @@ int main() {
     near(relative.euler_degrees()[2],90,.003F);
     const auto mount=imu::mounting_rotation(3,1);
     const auto model=mount*relative*mount.conjugate();
-    const auto modelNose=model.rotate({{0,1,0}});
-    near(modelNose[0],0); near(modelNose[1],1); near(modelNose[2],0);
+    const auto modelNose=model.rotate({{0,0,1}});
+    near(modelNose[0],0); near(modelNose[1],0); near(modelNose[2],1);
     puts("PASS: gyro yaw integration, captured reference, and mounting preserve nose-axis rotation");
 
     filter.reset();

@@ -27,7 +27,7 @@ export function useSerialLog(resetVersion: number) {
                 historyVersion = snapshot.version;
                 setHistory(snapshot.lines);
             }
-        }, 250);
+        }, 1000);
         const frameTimer = window.setInterval(() => setRawSerialLine(buffer.readFrame()), 1000);
         return () => { disposed = true; unlisten?.(); window.clearInterval(historyTimer); window.clearInterval(frameTimer); };
     }, [buffer]);

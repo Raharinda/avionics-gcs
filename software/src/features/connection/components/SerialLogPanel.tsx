@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Icon } from "../../../components/ui/Icon";
 import { useSerialLog } from "../hooks/useSerialLog";
 type Props = {
@@ -15,6 +15,20 @@ export const SerialLogPanel = memo(function SerialLogPanel(props: Props) {
     const [serialView, setSerialView] = useState<"status" | "raw">("status");
     const [isSerialHistoryOpen, setIsSerialHistoryOpen] = useState(false);
     const { rawSerialLine, rawSerialHistory, clearHistory } = useSerialLog(resetVersion);
+    useEffect(() => {
+        if (!isSerialHistoryOpen && !isLogExpanded)
+            return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "Escape")
+                return;
+            if (isSerialHistoryOpen)
+                setIsSerialHistoryOpen(false);
+            else
+                setIsLogExpanded(false);
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [isSerialHistoryOpen, isLogExpanded]);
     return (<>
       <footer className={`serial-log ${isLogExpanded ? "expanded" : ""}`}>
         <div className="serial-log-heading">
