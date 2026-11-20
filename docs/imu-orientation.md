@@ -216,51 +216,10 @@ Telemetry berupa JSON tanpa awalan, misalnya (ilustrasi):
 {"timestampMs":42000,"temperature":30.2,"pressure":994.4,"accelX":0.01,"accelY":0.02,"accelZ":9.806,"gyroX":0.0,"gyroY":0.0,"gyroZ":0.0,"imuValid":true,"calibrated":true,"referenceSet":true,"orientation":[1,0,0,0]}
 ```
 
-Saat belum ada acuan, `orientation` bernilai `null`. Backend GCS menghitung
-status MPU6050 dan BMP280 secara terpisah:
-
-- `imuValid:true` jika keenam nilai `accelX/Y/Z` dan `gyroX/Y/Z` semuanya
-  finite dan bukan 0, terlepas dari flag `imuValid` dari transmitter. Satu
-  sumbu bernilai 0 sudah membuat indikator health MPU tidak valid.
-- `barometerValid:true` jika `pressure` finite dan lebih besar dari 0.
-  Tekanan 0, negatif, atau tidak tersedia menghasilkan `pressure:null` dan
-  altitude kosong. Field `temperature` berasal dari MPU6050, bukan BMP280,
-  sehingga tidak dipakai untuk menentukan status barometer.
-
-Paket dengan sumbu MPU bernilai 0 tetap diteruskan agar status kedua sensor
-bisa ditampilkan secara independen di panel health. Sensor yang masih valid
-tetap dapat ditampilkan. Pembacaan MPU atau suhu non-finite tetap ditolak.
-Aturan ini mengikuti kriteria semua sumbu bukan 0; nilai gyro 0 saat diam
-juga membuat status MPU tidak valid.
-
-Software dapat menerima paket JSON melalui USB avionics langsung maupun USB
-receiver GCS. Pilih port yang tersambung dan klik **Start**; penerimaan
-telemetry tidak memerlukan `IMU_STATE` atau profil kalibrasi pada receiver.
-Receiver GCS melaporkan kalibrasi lokal tidak didukung tanpa menganggap
-stream telemetry gagal. Untuk kalibrasi, gunakan USB avionics langsung.
-
-Status health `imuValid` berbeda dari `imuReady` pada paket telemetry dan `IMU_STATE`:
-`imuReady` berasal dari keberhasilan pembacaan sensor oleh firmware, bukan
-dari profil kalibrasi atau aturan semua sumbu bukan 0. Sumbu bernilai 0
-tetap boleh dipakai untuk orientasi jika firmware melaporkan `imuReady:true`,
-profil dan acuan aktif, serta quaternion valid. Angka dan grafik IMU juga
-tetap tampil untuk pembacaan berhasil, meskipun indikator health bernilai
-`imuValid:false` karena ada sumbu 0. Paket firmware lama tanpa `imuReady`
-tetap diterima: flag `imuValid` asli dari firmware dipakai sebagai status
-pembacaan hardware; jika kedua flag tidak tersedia, minimal satu sumbu
-bukan 0 dianggap sebagai pembacaan tersedia. Indikator health tetap dihitung
-ulang dengan aturan keenam sumbu bukan 0.
-Transmitter mengosongkan sumbu menjadi 0 saat pembacaan gagal agar pembacaan
-lama tidak terlihat sebagai sampel baru. Pemulihan MPU mencoba ulang mulai
-250 ms, dengan backoff maksimal 5 detik; pembacaan BMP dan layanan USB tetap
-berjalan di antara percobaan. Tombol **Mulai enam
-posisi** dapat mengirim permintaan meskipun status awal belum terbaca atau
-masih `imuReady:false`; firmware memeriksa pembacaan sensor saat command
-diterima. Sesi dan progres hanya berubah setelah konfirmasi ESP32. Permintaan
-mulai dapat menggantikan permintaan status yang masih menunggu, tetapi tidak
-mengganggu command kalibrasi lain atau sesi aktif. Panduan pose kalibrasi
-mengizinkan sumbu 0 dan gyro 0 saat diam; posisi, gravitasi, dan kestabilan
-tetap diperiksa.
+Saat belum ada acuan, `orientation` bernilai `null`. Kegagalan I2C ditandai
+`imuValid:false` dan sampel tersebut tidak diterbitkan sebagai telemetry
+valid oleh backend. BMP280 yang tidak tersedia menghasilkan `pressure:null`
+dan altitude kosong, tanpa mematikan orientasi MPU yang masih valid.
 
 ## Verifikasi pengembangan
 

@@ -89,12 +89,6 @@ Tidak ada pembacaan barometer valid dalam satu jendela menghasilkan
 `pressure:null`. Format radio ada di `include/sensor_telemetry.h`:
 `temperature` adalah suhu internal MPU6050 (°C), `pressure` dari BMP280 (hPa),
 `accelX/Y/Z` dalam m/s², dan `gyroX/Y/Z` dalam rad/s.
-`imuReady` menyatakan pembacaan hardware berhasil, termasuk saat sebagian
-sumbu bernilai 0 karena sensor diam. Software menerima format ini baik dari
-USB avionics maupun melalui receiver GCS; indikator health `imuValid` di
-software tetap memakai aturan keenam sumbu bukan 0. Kalibrasi memerlukan USB
-langsung ke avionics. Receiver GCS meneruskan telemetry tanpa mensyaratkan
-profil kalibrasi lokal.
 
 Akumulasi ada di `include/telemetry_average.h`. Setiap pembacaan IMU valid
 menambah suhu dan enam komponen accel/gyro; tekanan ditambahkan sekali per
@@ -105,7 +99,7 @@ antrean yang bertambah selama AUX LOW atau mode belum NORMAL.
 Rata-rata baru dihapus setelah `sendLine()` menerima seluruh frame ke UART
 lokal. Encode atau penulisan gagal mempertahankan akumulasi dan data baru
 terus bergabung sampai percobaan berikutnya berhasil. `timestampMs` adalah
-akhir jendela; `imuValid`/`imuReady`/`calibrated` tetap status boolean, bukan rata-rata.
+akhir jendela; `imuValid`/`calibrated` tetap status boolean, bukan rata-rata.
 Durasi jendela dan jumlah masing-masing sampel dicetak di log TX USB agar
 payload JSON tetap kompatibel dan maksimal 240 byte. Jendela bisa lebih
 panjang dari dua detik jika radio sibuk. Pembacaan tekanan sebelum sampel IMU

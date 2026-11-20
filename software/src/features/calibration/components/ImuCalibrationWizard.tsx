@@ -17,10 +17,7 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
     const [selectedFace, setSelectedFace] = useState<FaceId>("ZP");
     useEffect(() => { if (imu.progress.face)
         setSelectedFace(imu.progress.face); }, [imu.progress.face]);
-    // The ESP32 validates sensor readiness when it receives the command. A missing
-    // or earlier status response must not permanently lock the start button.
-    const startDisabled = !connected || imu.supported === false || (imu.pending && !imu.checkingStatus) || imu.progress.active;
-    const disabled = !connected || imu.pending || imu.supported === false;
+    const disabled = !connected || imu.pending || !imu.state?.imuReady;
     const reading = connected && telemetryFresh ? telemetry : null;
     const hint = calibrationHint(imu.progress.face ?? selectedFace, reading);
     return <div className="calibration-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget)
@@ -31,8 +28,7 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
         <button className="modal-close" type="button" onClick={onClose} aria-label="Close calibration">×</button>
       </div>
       {!connected && <p className="imu-warning">Pilih port ESP32 dan klik Start. Kalibrasi memakai sensor asli; Dummy Data tidak menyimpan profil.</p>}
-      {connected && !imu.state && imu.supported !== false && <p className="imu-warning">Status sensor belum terbaca. Kamu bisa klik Mulai enam posisi; sesi dimulai setelah ESP32 mengonfirmasi sensor siap.</p>}
-      {connected && imu.state?.imuReady === false && <p className="imu-warning">Pembacaan MPU terakhir belum siap. Klik Mulai enam posisi untuk mencoba lagi; jika ESP32 menolak, periksa pesan error dan sambungan sensor.</p>}
+      {connected && !imu.state && <p className="imu-warning">Menunggu firmware imu3d-v2. Jika belum ada respons, flash firmware baru terlebih dahulu.</p>}
       {imu.error && <p className="imu-error" role="alert">{imu.error}</p>}
       <p className="imu-message" role="status">{imu.message}</p>
       <div className="imu-wizard-grid">
@@ -60,9 +56,9 @@ export function ImuCalibrationWizard({ controller: imu, connected, telemetry, re
             <progress max={imu.progress.target} value={imu.progress.samples}/>
           </div>}
           <div className="imu-actions">
-            <button type="button" className="calibration-start" disabled={startDisabled} onClick={() => void imu.start()}>Mulai enam posisi</button>
+            <button type="button" className="calibration-start" disabled={disabled || imu.progress.active} onClick={() => void imu.start()}>Mulai enam posisi</button>
             <button type="button" className="calibration-start" disabled={disabled || !imu.progress.active || imu.progress.face !== null} onClick={() => void imu.capture(selectedFace)}>Rekam {faceLabel(selectedFace)}</button>
-            <button type="button" disabled={!connected || imu.cancelling || imu.supported === false} onClick={() => void imu.cancel()}>{imu.cancelling ? "Menghapus kalibrasi…" : "Batalkan & hapus kalibrasi"}</button>
+            <button type="button" disabled={!connected || imu.cancelling} onClick={() => void imu.cancel()}>{imu.cancelling ? "Menghapus kalibrasi…" : "Batalkan & hapus kalibrasi"}</button>
             {imu.progress.active && imu.progress.completed.length === 6 && <button type="button" disabled={imu.pending} onClick={() => void imu.save()}>Simpan profil</button>}
           </div>
           <p className="imu-note">Setelah keenam posisi valid, profil otomatis disimpan di ESP32. Batalkan & hapus kalibrasi menghapus profil dan acuan tersimpan; data IMU dan gyro tetap tersedia.</p>
