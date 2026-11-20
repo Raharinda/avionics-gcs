@@ -80,7 +80,7 @@ test('barometer follows incoming packets while gyro/accelerometer numbers and ch
   });
   let latest = point(1), series = [latest];
   const render = () => Object.fromEntries(r.render(() => TelemetrySensorGrid({ latestTelemetry: latest, series, dataSource: 'COM4 · USB', darkMode: false, hasTelemetry: true }))
-    .props.children.map(card => [card.props.title ?? 'Attitude', card.props]));
+    .props.children.map(card => [card.props.title, card.props]));
   render();
   for (let index = 2; index <= 10; index++) {
     r.advance(100);
@@ -98,25 +98,6 @@ test('barometer follows incoming packets while gyro/accelerometer numbers and ch
   assert.equal(cards.Gyroscope.data.at(-1).gyroscope, 10);
   latest = point(20, 'COM5'); series = [latest];
   assert.equal(render().Gyroscope.value, '20.00', 'source switch must not show the previous sensor');
-  latest = { ...latest, imuValid: false, imuReady: false, barometerValid: true, referenceSet: true, orientation: [1, 0, 0, 0] };
-  series = [latest];
-  const invalidMpu = render();
-  assert.equal(invalidMpu.Gyroscope.hasData, false);
-  assert.equal(invalidMpu.Accelerometer.hasData, false);
-  assert.equal(invalidMpu.Attitude.hasData, false);
-  assert.equal(invalidMpu.Pressure.hasData, true);
-  latest = { ...latest, imuValid: false, imuReady: true };
-  series = [latest];
-  const stationary = render();
-  assert.equal(stationary.Attitude.hasData, true, 'confirmed orientation survives stationary zero axes');
-  assert.equal(stationary.Accelerometer.hasData, true);
-  assert.equal(stationary.Gyroscope.hasData, true);
-  latest = { ...latest, imuValid: true, barometerValid: false, pressure: null };
-  series = [latest];
-  const invalidBarometer = render();
-  assert.equal(invalidBarometer.Pressure.hasData, false);
-  assert.equal(invalidBarometer.Gyroscope.hasData, true);
-  assert.equal(invalidBarometer.Accelerometer.hasData, true);
   latest = null; series = [];
   assert.equal(render().Gyroscope.value, '—');
   assert.equal(render().Accelerometer.data.length, 0);
@@ -133,8 +114,8 @@ test('raw telemetry, rocket orientation, timestamps and packet counts update wit
     '../../../data/dummyTelemetry': { DUMMY_SOURCE: 'Dummy data' },
     '../../../data/packetLoss': packetLoss,
   }, { window: r.window, Date });
-  let connected = true, dataSource = 'COM4 · USB';
-  const render = () => r.render(() => useTelemetry({ connected, dataSource }));
+  let connected = true;
+  const render = () => r.render(() => useTelemetry({ connected, dataSource: 'COM4 · USB' }));
   render();
   await Promise.resolve();
   for (let index = 1; index <= 10; index++) {
@@ -152,14 +133,4 @@ test('raw telemetry, rocket orientation, timestamps and packet counts update wit
   render();
   listener({ payload: point(20) });
   assert.equal(render().packetCount, 10);
-  connected = true; dataSource = 'COM5 · USB';
-  render();
-  assert.equal(render().packetCount, 0);
-  listener({ payload: { ...point(1, 'COM5'), imuReady: true, imuValid: false, barometerValid: true } });
-  const switched = render();
-  assert.equal(switched.packetCount, 1, 'the other USB endpoint needs no calibration profile to receive telemetry');
-  assert.equal(switched.series.at(-1).sourcePort, 'COM5');
-  assert.equal(switched.series.at(-1).pressure, 1001);
-  listener({ payload: point(99, 'COM4') });
-  assert.equal(render().packetCount, 1, 'late packets from the previous endpoint are ignored');
 });

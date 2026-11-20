@@ -43,8 +43,7 @@ export const CommandPanel = memo(function CommandPanel(props: Props) {
         { label: "LoRa / Serial port", ok: connectionReady, detail: connectionReady ? "Port is connected and ready" : "Port is disconnected or unavailable" },
         { label: "Telemetry stream", ok: connected && hasTelemetry, detail: connected ? (hasTelemetry ? "Streaming telemetry packets" : "Connected, but no telemetry packet received") : "Telemetry stream is stopped" },
         { label: "Telemetry payload", ok: hasTelemetry && latestTelemetry !== null, detail: hasTelemetry && latestTelemetry ? "Latest payload contains valid telemetry" : "Waiting for a valid JSON telemetry payload" },
-        { label: "MPU6050 / IMU", ok: hasTelemetry && latestTelemetry?.imuValid === true, detail: hasTelemetry && latestTelemetry ? (latestTelemetry.imuValid === true ? "All accelerometer and gyroscope axes are non-zero" : "An accelerometer or gyroscope axis is zero or unavailable") : "No IMU reading received" },
-        { label: "BMP280 / Barometer", ok: hasTelemetry && latestTelemetry?.barometerValid === true, detail: hasTelemetry && latestTelemetry ? (latestTelemetry.barometerValid === true ? "Pressure reading is non-zero and valid" : "Pressure reading is zero or unavailable") : "No barometer reading received" },
+        { label: "Avionic / IMU", ok: hasTelemetry && latestTelemetry?.imuValid !== false, detail: latestTelemetry?.imuValid === false ? "IMU reported an invalid reading" : (hasTelemetry ? (latestTelemetry?.calibrated ? "IMU is calibrated and valid" : "IMU is valid but not calibrated") : "No IMU reading received") },
     ];
     const failedChecks = healthChecks.filter((check) => !check.ok);
     const healthLabel = commandState === "error" ? "D19 unconfirmed" : failedChecks.length === 0 ? "No error" : failedChecks.length === 1 ? failedChecks[0].label : `${failedChecks.length} issues`;

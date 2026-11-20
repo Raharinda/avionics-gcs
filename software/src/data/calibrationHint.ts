@@ -1,7 +1,7 @@
 import { faceLabel, type FaceId } from "../types/imu";
 import type { TelemetryPoint } from "../types/telemetry";
 
-type Reading = Pick<TelemetryPoint, "accelX" | "accelY" | "accelZ" | "gyroscope" | "calibrated" | "imuValid" | "imuReady">;
+type Reading = Pick<TelemetryPoint, "accelX" | "accelY" | "accelZ" | "gyroscope" | "calibrated" | "imuValid">;
 type Hint = { tone: "info" | "warning"; message: string };
 const GRAVITY = 9.80665;
 
@@ -10,9 +10,7 @@ const GRAVITY = 9.80665;
 export function calibrationHint(face: FaceId, reading: Reading | null): Hint {
   if (!reading) return { tone: "info", message: "Menunggu telemetry baru dari ESP32 untuk memeriksa posisi papan." };
   const accel = [reading.accelX, reading.accelY, reading.accelZ];
-  // The health indicator requires every axis to be non-zero. Calibration expects
-  // stationary readings, so zero axes and zero gyro are allowed here.
-  if (reading.imuReady === false || ![...accel, reading.gyroscope].every(Number.isFinite)) {
+  if (reading.imuValid === false || ![...accel, reading.gyroscope].every(Number.isFinite)) {
     return { tone: "warning", message: "Data IMU tidak valid. Periksa Raw Serial dan sambungan sensor." };
   }
   const magnitude = Math.hypot(...accel);

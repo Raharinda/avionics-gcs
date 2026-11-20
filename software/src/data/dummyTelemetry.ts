@@ -20,8 +20,6 @@ function buildDummyPoint(time: number, phase: number, baseAltitude: number): Tel
     yaw: Math.sin(phase / 4.1) * 18.0,
     rssi: Math.round(-64 + Math.sin(phase / 2.5) * 6),
     imuValid: true,
-    imuReady: true,
-    barometerValid: true,
     calibrated: true,
     referenceSet: true,
   };
