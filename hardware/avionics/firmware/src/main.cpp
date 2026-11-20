@@ -3,6 +3,7 @@
 #include <Adafruit_BMP280.h>
 #include <Preferences.h>
 #include "mpu6050_reader.h"
+#include "imu_recovery.h"
 #include "imu_calibration.h"
 #include "imu_profile_storage.h"
 #include "lora_radio.h"
@@ -40,6 +41,9 @@ int noseAxis=3, rightAxis=1;
 float temperature=0, pressure=NAN, bmpTemperature=NAN;
 uint8_t bmpAddress=0;
 uint32_t lastSampleUs=0, lastTelemetryMs=0, lastBmpMs=0, lastRetryMs=0, lastProgressMs=0, lastValidMs=0;
+imu::RecoveryBackoff imuRecovery;
+const char* imuError="menunggu sampel pertama";
+uint32_t imuReadFailures=0;
 String commandBuffer;
 bool discardCommand=false;
 uint32_t lastLoRaSendMs=0;
@@ -171,10 +175,12 @@ void diagnostics() {
     }
     Serial.println();
 }
-void initSensors() {
+void initMpu() {
     if (!mpuReady) {
+        bool found=false;
         for (uint8_t address : {0x68,0x69}) {
             if (!present(address)) continue;
+            found=true;
             const auto status=mpu.begin(address);
             if (status==Mpu6050Reader::Status::Ok) {
                 mpuReady=true; imuValid=false;
@@ -183,9 +189,16 @@ void initSensors() {
                 Serial.printf("MPU6050 siap di 0x%02X\n",address);
                 diagnostics(); break;
             }
-            Serial.printf("MPU6050: %s\n",Mpu6050Reader::message(status)); diagnostics();
+            imuError=Mpu6050Reader::message(status);
+            Serial.printf("MPU6050: %s\n",imuError); diagnostics();
+        }
+        if (!found) {
+            imuError="sensor tidak merespons alamat I2C 0x68/0x69";
+            Serial.printf("MPU6050: %s\n",imuError);
         }
     }
+}
+void initBmp() {
     if (!bmpReady) for (uint8_t address : {0x76,0x77}) {
         if (present(address) && bmp.begin(address)) {
             bmp.setSampling(Adafruit_BMP280::MODE_SLEEP); delay(100);
@@ -274,13 +287,25 @@ void sampleImu(uint32_t nowUs) {
     Mpu6050Reader::Sample sample{};
     const auto status=mpu.read(sample);
     if (status!=Mpu6050Reader::Status::Ok) {
-        Serial.printf("MPU6050: %s\n",Mpu6050Reader::message(status)); diagnostics();
+        imuError=Mpu6050Reader::message(status);
+        ++imuReadFailures;
+        Serial.printf("MPU6050: %s\n",imuError); diagnostics();
         imuValid=false; mpuReady=false; referenceSet=false; filter.reset();
+        accel={{0,0,0}}; gyro={{0,0,0}}; // Current telemetry must not reuse a failed sensor's last axes.
         radioAverage.reset(); // Do not send a stale window after sensor recovery.
         if (calibration.active) { calibration.cancel(); Serial.println("CALIBRATION_ERROR:Sesi dibatalkan karena pembacaan MPU gagal; profil lama tetap tersimpan"); printProgress(); }
-        lastRetryMs=millis(); printState(); return;
+        imuRecovery.failed(millis());
+        Serial.printf("# MPU6050 recovery pending | retry_ms=%lu last_valid_ms=%lu read_failures=%lu\n",
+            static_cast<unsigned long>(imuRecovery.intervalMs()),static_cast<unsigned long>(lastValidMs),
+            static_cast<unsigned long>(imuReadFailures));
+        printState(); return;
     }
     const bool wasValid=imuValid;
+    if (imuRecovery.waiting())
+        Serial.printf("# MPU6050 recovered | attempts=%lu at_ms=%lu\n",
+            static_cast<unsigned long>(imuRecovery.attempts()),static_cast<unsigned long>(millis()));
+    imuRecovery.recovered();
+    imuError=nullptr;
     imuValid=true; lastValidMs=millis(); temperature=sample.temperature_c;
     rawAccel={{sample.accel[0],sample.accel[1],sample.accel[2]}};
     rawGyro={{sample.gyro[0],sample.gyro[1],sample.gyro[2]}};
@@ -358,11 +383,15 @@ void telemetry(uint32_t now) {
     }
     Serial.printf("{\"timestampMs\":%lu,\"temperature\":%.2f,\"pressure\":",static_cast<unsigned long>(now),temperature);
     if (std::isfinite(pressure)) Serial.printf("%.2f",pressure); else Serial.print("null");
-    Serial.printf(",\"accelX\":%.5f,\"accelY\":%.5f,\"accelZ\":%.5f,\"gyroX\":%.6f,\"gyroY\":%.6f,\"gyroZ\":%.6f,\"imuValid\":%s,\"calibrated\":%s,\"referenceSet\":%s,\"orientation\":",
-        accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2],imuValid?"true":"false",calibrated?"true":"false",referenceSet?"true":"false");
+    Serial.printf(",\"accelX\":%.5f,\"accelY\":%.5f,\"accelZ\":%.5f,\"gyroX\":%.6f,\"gyroY\":%.6f,\"gyroZ\":%.6f,\"imuValid\":%s,\"imuReady\":%s,\"calibrated\":%s,\"referenceSet\":%s,\"orientation\":",
+        accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2],imuValid?"true":"false",imuValid?"true":"false",calibrated?"true":"false",referenceSet?"true":"false");
     if (orientationValid) Serial.printf("[%.7f,%.7f,%.7f,%.7f]",relative.w,relative.x,relative.y,relative.z);
     else Serial.print("null");
-    Serial.print(",\"orientationFrame\":\"RFU\"");
+    Serial.printf(",\"orientationFrame\":\"RFU\",\"imuLastValidMs\":%lu,\"imuReadFailures\":%lu,\"imuRecoveryAttempts\":%lu,\"imuError\":",
+        static_cast<unsigned long>(lastValidMs),static_cast<unsigned long>(imuReadFailures),
+        static_cast<unsigned long>(imuRecovery.attempts()));
+    if (imuValid) Serial.print("null");
+    else Serial.printf("\"%s\"",imuError ? imuError : "menunggu sampel pertama");
     Serial.println('}');
 }
 } // namespace
@@ -381,7 +410,9 @@ void setup() {
     Serial.println("\nFirmware: imu3d-v2 | MPU6050 + BMP280 | SDA=D21 SCL=D22");
     Serial.printf("# GPIO map TX | CALIBRATION=13 reserved | POP_TEST_IN=%d (-1=disabled) | POP_TEST_OUT=19 LOW | AUX_GPIO=%d\n",board::kPopTestInputPin,radio::kAuxPin);
     if (!Wire.begin(kSdaPin,kSclPin,100000)) { Serial.println("MPU6050: Gagal membuka bus I2C"); while (true) delay(1000); }
-    Wire.setTimeOut(20); loadProfile(); initSensors(); printState(); printProgress();
+    Wire.setTimeOut(20); loadProfile(); initMpu(); initBmp();
+    if (!mpuReady) imuRecovery.failed(millis());
+    printState(); printProgress();
     Serial.println("# E32-433T30D SENSOR TELEMETRY ROLE=TX | MPU6050 + BMP280 | JSON sensor melalui radio");
     Serial.printf("# LORA E32-433T30D UART siap | baud=9600 RX=16 TX=17 M0=%d M1=%d AUX=%s AUX_GPIO=%d | interval=2000ms\n",radio::kM0Pin,radio::kM1Pin,radio::kUseAux?"enabled":"unused",radio::kAuxPin);
     Serial.println("# LORA averaging=ON | suhu/accel/gyro tiap baca IMU, tekanan tiap baca BMP | window sampai UART menerima frame lengkap");
@@ -402,8 +433,15 @@ void loop() {
     gpioOutput.service(now);
     if (!responding) serviceLoRa(now);
     if (now-lastTelemetryMs>=kTelemetryIntervalMs) { lastTelemetryMs=now; telemetry(now); }
-    if ((!mpuReady || !bmpReady) && now-lastRetryMs>=5000) {
-        lastRetryMs=now; initSensors(); printState();
+    if (!mpuReady && imuRecovery.takeAttempt(now)) {
+        Serial.printf("# MPU6050 retry | attempt=%lu next_retry_ms=%lu\n",
+            static_cast<unsigned long>(imuRecovery.attempts()),static_cast<unsigned long>(imuRecovery.intervalMs()));
+        initMpu();
+        if (!mpuReady) imuRecovery.failed(millis());
+        printState();
+    }
+    if (!bmpReady && static_cast<uint32_t>(millis()-lastRetryMs)>=5000) {
+        lastRetryMs=millis(); initBmp();
     }
     delay(1);
 }

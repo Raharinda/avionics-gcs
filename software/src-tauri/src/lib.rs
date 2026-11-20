@@ -67,6 +67,8 @@ struct RawTelemetryMessage {
     timestamp_ms: Option<u64>,
     #[serde(default, rename = "imuValid")]
     imu_valid: Option<bool>,
+    #[serde(default, rename = "imuReady")]
+    imu_ready: Option<bool>,
     #[serde(default, rename = "imuError")]
     imu_error: Option<String>,
     #[serde(default, rename = "imuLastValidMs")]
@@ -94,8 +96,17 @@ impl RawTelemetryMessage {
         axes.iter().all(|value| value.is_finite() && *value != 0.0)
     }
 
+    fn imu_read_ready(&self) -> bool {
+        // Older firmware used imuValid for hardware-read status. Keep that
+        // meaning separate from the stricter health indicator calculated by GCS.
+        self.imu_ready.or(self.imu_valid).unwrap_or_else(|| {
+            [self.accel_x, self.accel_y, self.accel_z, self.gyro_x, self.gyro_y, self.gyro_z]
+                .iter().any(|value| value.is_finite() && *value != 0.0)
+        })
+    }
+
     fn imu_failure_message(&self) -> Option<String> {
-        if self.has_valid_imu_data() || self.imu_valid != Some(false) { return None; }
+        if self.imu_read_ready() { return None; }
         let reason = self.imu_error.as_deref().filter(|reason| !reason.trim().is_empty())?;
         Some(format!(
             "MPU6050: {reason}; last valid={} ms, read failures={}, recovery attempts={}",
@@ -125,6 +136,8 @@ struct TelemetryMessage {
     timestamp_ms: Option<u64>,
     #[serde(rename = "imuValid")]
     imu_valid: bool,
+    #[serde(rename = "imuReady")]
+    imu_ready: bool,
     #[serde(rename = "barometerValid")]
     barometer_valid: bool,
     calibrated: bool,
@@ -144,11 +157,12 @@ impl TelemetryMessage {
         }
         // Assess each sensor independently so a failed MPU does not hide the barometer.
         let imu_valid = raw.has_valid_imu_data();
+        let imu_ready = raw.imu_read_ready();
         let acceleration = raw.accel_x.hypot(raw.accel_y).hypot(raw.accel_z) / 9.80665;
         let gyroscope = raw.gyro_x.hypot(raw.gyro_y).hypot(raw.gyro_z).to_degrees();
         let pressure = raw.pressure.filter(|value| value.is_finite() && *value > 0.0);
         let altitude = altitude_reference.read(pressure);
-        let orientation = raw.orientation.filter(|_| imu_valid && raw.calibrated && raw.reference_set)
+        let orientation = raw.orientation.filter(|_| imu_ready && raw.calibrated && raw.reference_set)
             .and_then(|q| attitude::normalize_rfu(q, raw.orientation_frame.as_deref()));
         let rssi = raw.rssi.filter(|value| value.is_finite());
         let [roll, pitch, yaw] = orientation.map(attitude::euler_degrees).unwrap_or([
@@ -159,7 +173,7 @@ impl TelemetryMessage {
             temperature: raw.temperature, pressure, acceleration, gyroscope, altitude,
             accel_x: raw.accel_x, accel_y: raw.accel_y, accel_z: raw.accel_z,
             roll, pitch, yaw, timestamp_ms: raw.timestamp_ms,
-            imu_valid, barometer_valid: pressure.is_some(), calibrated: raw.calibrated,
+            imu_valid, imu_ready, barometer_valid: pressure.is_some(), calibrated: raw.calibrated,
             reference_set: orientation.is_some(), orientation, rssi, source_port: String::new(),
         })
     }
@@ -498,7 +512,9 @@ mod telemetry_tests {
                     let telemetry=convert(value).unwrap();
                     assert!(!telemetry.imu_valid);
                     assert!(telemetry.barometer_valid && telemetry.altitude.is_some());
-                    assert!(!telemetry.reference_set && telemetry.orientation.is_none());
+                    let ready=flag.as_bool().unwrap_or(true);
+                    assert_eq!(telemetry.imu_ready,ready);
+                    assert_eq!(telemetry.orientation.is_some(),ready);
                 }
             }
         }
@@ -536,12 +552,13 @@ mod telemetry_tests {
         assert!(message.contains("recovery attempts=3"));
         assert!(!TelemetryMessage::from_raw(raw, &mut altitude::AltitudeReference::default()).unwrap().imu_valid);
         value["accelZ"]=json!(9.80665);
+        value["imuReady"]=json!(true);
         let recovered: RawTelemetryMessage=serde_json::from_value(value).unwrap();
         assert!(recovered.imu_failure_message().is_none());
         assert!(TelemetryMessage::from_raw(recovered, &mut altitude::AltitudeReference::default()).is_ok());
         let mut legacy=sample(); legacy["imuValid"]=json!(false);
         let old: RawTelemetryMessage=serde_json::from_value(legacy).unwrap();
-        assert!(old.imu_failure_message().is_none());
+        assert!(old.imu_failure_message().is_none()); // Old packet has no diagnostic reason.
         assert!(TelemetryMessage::from_raw(old, &mut altitude::AltitudeReference::default()).unwrap().imu_valid);
     }
     #[test]
@@ -550,6 +567,40 @@ mod telemetry_tests {
         let telemetry=convert(value).unwrap();
         assert!(!telemetry.barometer_valid && telemetry.pressure.is_none() && telemetry.altitude.is_none());
         assert!(telemetry.orientation.is_some());
+    }
+    #[test]
+    fn direct_avionics_and_gcs_relay_packets_accept_stationary_readings() {
+        let mut direct=sample();
+        direct["imuReady"]=json!(true);
+        direct["accelX"]=json!(0.0);
+        direct["accelY"]=json!(0.0);
+        for axis in ["gyroX", "gyroY", "gyroZ"] { direct[axis]=json!(0.0); }
+        let telemetry=convert(direct.clone()).unwrap();
+        assert!(!telemetry.imu_valid && telemetry.imu_ready && telemetry.barometer_valid);
+        assert!(telemetry.orientation.is_some() && telemetry.reference_set);
+        assert_eq!(telemetry.acceleration,1.0);
+        // The GCS forwards radio JSON, without an IMU_STATE profile or local reference.
+        for key in ["orientation", "orientationFrame", "referenceSet"] {
+            direct.as_object_mut().unwrap().remove(key);
+        }
+        let relay=convert(direct).unwrap();
+        assert!(!relay.imu_valid && relay.imu_ready && relay.barometer_valid);
+        assert!(relay.orientation.is_none() && relay.altitude.is_some());
+        assert_eq!(relay.acceleration,telemetry.acceleration);
+        assert_eq!(relay.pressure,telemetry.pressure);
+        // Earlier firmware has imuValid but not imuReady, on either USB path.
+        let mut legacy=sample();
+        legacy["gyroX"]=json!(0.0);
+        let telemetry=convert(legacy).unwrap();
+        assert!(!telemetry.imu_valid && telemetry.imu_ready && telemetry.orientation.is_some());
+    }
+    #[test]
+    fn hardware_read_failure_prevents_stale_orientation_but_keeps_barometer() {
+        let mut value=sample();
+        value["imuReady"]=json!(false);
+        let telemetry=convert(value).unwrap();
+        assert!(!telemetry.imu_ready && !telemetry.reference_set && telemetry.orientation.is_none());
+        assert!(telemetry.barometer_valid && telemetry.altitude.is_some());
     }
     #[test]
     fn mpu_and_barometer_validity_are_independent() {
@@ -563,7 +614,7 @@ mod telemetry_tests {
                 let barometer_valid=pressure.as_f64().is_some_and(|p| p>0.0);
                 assert_eq!(telemetry.barometer_valid, barometer_valid);
                 assert_eq!(telemetry.altitude.is_some(), barometer_valid);
-                assert_eq!(telemetry.orientation.is_some(), imu_valid);
+                assert!(telemetry.imu_ready && telemetry.orientation.is_some());
             }
         }
     }

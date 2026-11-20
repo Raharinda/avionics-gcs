@@ -8,6 +8,7 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
     const [progress, setProgress] = useState<CalibrationProgress>(EMPTY);
     const [pending, setPending] = useState(false);
     const [cancelling, setCancelling] = useState(false);
+    const [supported, setSupported] = useState<boolean | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const transport = useRef({ connected, sendCommand });
@@ -27,8 +28,11 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
             setError("Mulai streaming dari port ESP32 terlebih dahulu.");
             return;
         }
-        // Reset can interrupt any pending command, including a status request.
-        if (pendingCommand.current && (command !== "CALIBRATE_RESET" || pendingCommand.current === command))
+        // Starting can supersede a status request that missed the board's boot response.
+        const startingDuringStatus = command === "CALIBRATE_START" && pendingCommand.current === "IMU_STATUS";
+        // Reset can interrupt any other pending command.
+        if (pendingCommand.current && !startingDuringStatus &&
+            (command !== "CALIBRATE_RESET" || pendingCommand.current === command))
             return;
         const token = session.current;
         const requestId = ++request.current;
@@ -60,6 +64,7 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
         ++session.current;
         setState(null);
         setProgress(EMPTY);
+        setSupported(null);
         setError(null);
         setNotice(null);
         acknowledge();
@@ -82,6 +87,7 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
                     return;
                 }
                 setState(next);
+                setSupported(true);
             }
             else if (line.startsWith("CALIBRATION_STATUS:")) {
                 const next = parseCalibrationProgress(line.slice("CALIBRATION_STATUS:".length));
@@ -99,11 +105,25 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
                 setError(line.slice("CALIBRATION_RESET_ERROR:".length));
             }
             else if (line.startsWith("CALIBRATION_ERROR:")) {
+                // Older GCS firmware reports its local calibration limitation as an error.
+                if (/^CALIBRATION_ERROR:Receiver E(?:22|32) hanya telemetri/.test(line)) {
+                    acknowledge();
+                    setSupported(false);
+                    setError(null);
+                    setNotice("Telemetry melalui GCS tetap diterima. Untuk kalibrasi, hubungkan USB langsung ke avionics/transmitter.");
+                    return;
+                }
                 // A previous capture can fail while reset is already in flight.
                 if (command !== "CALIBRATE_RESET") {
                     acknowledge();
                     setError(line.slice("CALIBRATION_ERROR:".length));
                 }
+            }
+            else if (line.startsWith("CALIBRATION_UNSUPPORTED:")) {
+                acknowledge();
+                setSupported(false);
+                setError(null);
+                setNotice(line.slice("CALIBRATION_UNSUPPORTED:".length));
             }
             else if (line === "CALIBRATION_STARTED") {
                 setProgress({ ...EMPTY, active: true });
@@ -166,5 +186,6 @@ export function useImuCalibration(connected: boolean, source: string, sendComman
                 : state.referenceSet ? "Acuan awal ditetapkan. Model 3D mengikuti sensor."
                     : state.calibrated ? "Profil enam posisi tersimpan. Tetapkan acuan awal untuk menampilkan orientasi."
                         : "Kalibrasi enam posisi diperlukan.");
-    return { state, progress, pending, cancelling, error, message, ...actions };
+    const checkingStatus = pending && pendingCommand.current === "IMU_STATUS";
+    return { state, progress, pending, checkingStatus, supported, cancelling, error, message, ...actions };
 }

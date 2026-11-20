@@ -54,10 +54,12 @@ void readUsbCommands() {
                 usbCommand="";
                 continue;
             }
-            if (usbCommand=="CALIBRATE_RESET")
-                Serial.println("CALIBRATION_RESET_ERROR:Receiver E32 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi.");
+            if (usbCommand=="IMU_STATUS")
+                Serial.println("CALIBRATION_UNSUPPORTED:Telemetry melalui GCS tetap diterima. Untuk kalibrasi, hubungkan USB langsung ke avionics/transmitter.");
+            else if (usbCommand=="CALIBRATE_RESET")
+                Serial.println("CALIBRATION_RESET_ERROR:Kalibrasi lokal tidak tersedia pada receiver GCS. Hubungkan USB langsung ke transmitter untuk kalibrasi.");
             else if (usbCommand.startsWith("IMU_") || usbCommand.startsWith("CALIBRATE_"))
-                Serial.println("CALIBRATION_ERROR:Receiver E32 hanya telemetri. Hubungkan USB langsung ke transmitter untuk kalibrasi dan acuan 3D.");
+                Serial.println("CALIBRATION_ERROR:Kalibrasi lokal tidak tersedia pada receiver GCS. Hubungkan USB langsung ke transmitter untuk kalibrasi dan acuan 3D.");
             else if (usbCommand.length() || discardCommand)
                 Serial.println("# E32 receiver tidak meneruskan command USB ke radio");
             usbCommand="";

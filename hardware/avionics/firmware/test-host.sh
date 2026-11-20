@@ -7,6 +7,10 @@ g++ -std=c++11 -Wall -Wextra -Werror -pedantic \
     -I test/host/stubs -I include \
     src/mpu6050_reader.cpp test/host/test_mpu6050_reader.cpp -o "$test_binary"
 "$test_binary"
+g++ -std=c++17 -Wall -Wextra -Werror -pedantic \
+    -I test/host/stubs -I include \
+    src/mpu6050_reader.cpp test/host/test_imu_recovery.cpp -o "$test_binary"
+"$test_binary"
 g++ -std=c++17 -Wall -Wextra -Werror -pedantic -I include \
     test/host/test_imu_orientation.cpp -o "$test_binary"
 "$test_binary"

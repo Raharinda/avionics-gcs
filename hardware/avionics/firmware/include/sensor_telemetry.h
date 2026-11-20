@@ -34,7 +34,7 @@ inline std::size_t encodeLine(const Sample& sample, char* output, std::size_t ca
         "{\"timestampMs\":%lu,\"temperature\":%.2f,\"pressure\":%s,"
         "\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,"
         "\"gyroX\":%.4f,\"gyroY\":%.4f,\"gyroZ\":%.4f,"
-        "\"imuValid\":true,\"calibrated\":%s}\n",
+        "\"imuValid\":true,\"imuReady\":true,\"calibrated\":%s}\n",
         static_cast<unsigned long>(sample.timestampMs),sample.temperatureC,pressureText,
         sample.accel[0],sample.accel[1],sample.accel[2],sample.gyro[0],sample.gyro[1],sample.gyro[2],
         sample.calibrated?"true":"false");

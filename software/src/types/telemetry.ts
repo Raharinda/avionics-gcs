@@ -18,6 +18,7 @@ export type TelemetryPoint = {
   calibrated?: boolean;
   referenceSet?: boolean;
   imuValid?: boolean;
+  imuReady?: boolean;
   barometerValid?: boolean;
   timestampMs?: number | null;
   rssi?: number | null;

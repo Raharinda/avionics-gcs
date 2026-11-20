@@ -56,7 +56,7 @@ export const TelemetrySensorGrid = memo(function TelemetrySensorGrid({ series, l
     hasTelemetry: boolean;
 }) {
     const source = latestTelemetry ? latestTelemetry.sourcePort ?? dataSource : dataSource;
-    const imuHasData = hasTelemetry && latestTelemetry?.imuValid !== false;
+    const imuHasData = hasTelemetry && (latestTelemetry?.imuReady ?? latestTelemetry?.imuValid ?? true);
     const attitudeHasData = imuHasData && (dataSource === DUMMY_SOURCE ||
         Boolean(latestTelemetry?.referenceSet && latestTelemetry.orientation));
     const chartData = useSampledValue(series, 250, source);
