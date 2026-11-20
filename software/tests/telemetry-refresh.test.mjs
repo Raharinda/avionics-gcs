@@ -80,7 +80,7 @@ test('barometer follows incoming packets while gyro/accelerometer numbers and ch
   });
   let latest = point(1), series = [latest];
   const render = () => Object.fromEntries(r.render(() => TelemetrySensorGrid({ latestTelemetry: latest, series, dataSource: 'COM4 · USB', darkMode: false, hasTelemetry: true }))
-    .props.children.map(card => [card.props.title, card.props]));
+    .props.children.map(card => [card.props.title ?? 'Attitude', card.props]));
   render();
   for (let index = 2; index <= 10; index++) {
     r.advance(100);
@@ -98,6 +98,19 @@ test('barometer follows incoming packets while gyro/accelerometer numbers and ch
   assert.equal(cards.Gyroscope.data.at(-1).gyroscope, 10);
   latest = point(20, 'COM5'); series = [latest];
   assert.equal(render().Gyroscope.value, '20.00', 'source switch must not show the previous sensor');
+  latest = { ...latest, imuValid: false, barometerValid: true, referenceSet: true, orientation: [1, 0, 0, 0] };
+  series = [latest];
+  const invalidMpu = render();
+  assert.equal(invalidMpu.Gyroscope.hasData, false);
+  assert.equal(invalidMpu.Accelerometer.hasData, false);
+  assert.equal(invalidMpu.Attitude.hasData, false);
+  assert.equal(invalidMpu.Pressure.hasData, true);
+  latest = { ...latest, imuValid: true, barometerValid: false, pressure: null };
+  series = [latest];
+  const invalidBarometer = render();
+  assert.equal(invalidBarometer.Pressure.hasData, false);
+  assert.equal(invalidBarometer.Gyroscope.hasData, true);
+  assert.equal(invalidBarometer.Accelerometer.hasData, true);
   latest = null; series = [];
   assert.equal(render().Gyroscope.value, '—');
   assert.equal(render().Accelerometer.data.length, 0);

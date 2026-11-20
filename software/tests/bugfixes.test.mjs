@@ -321,6 +321,27 @@ test('CommandPanel timeline does not mark Sending FIRE done while merely armed',
   assert.match(firingHtml, /<div class="done"><i><\/i>Sending FIRE<\/div>/);
 });
 
+test('CommandPanel reports MPU and barometer health independently and requires fresh readings', () => {
+  const { CommandPanel } = load(commandPanelSource, {
+    react: React,
+    'react/jsx-runtime': jsxRuntime,
+    '../../../components/ui/Icon': { Icon: () => null },
+  });
+  for (const hasTelemetry of [false, true]) {
+    for (const imuValid of [false, true]) {
+      for (const barometerValid of [false, true]) {
+        const html = renderToStaticMarkup(React.createElement(CommandPanel, {
+          commandState: 'safe', connectionReady: true, connected: true, hasTelemetry,
+          latestTelemetry: { imuValid, barometerValid }, pulseDuration: '200',
+        }));
+        const health = html.match(/<button class="health-row"[^>]*>(.*?)<\/button>/)[1];
+        assert.ok(health.includes(`<span class="${hasTelemetry && imuValid ? 'healthy' : 'unhealthy'}">4</span>`));
+        assert.ok(health.includes(`<span class="${hasTelemetry && barometerValid ? 'healthy' : 'unhealthy'}">5</span>`));
+      }
+    }
+  }
+});
+
 test('dashboard uses remote D19 ACK, reset supersedes FIRE, source state is isolated, and dev CSV export is retained', async (t) => {
   const r = createHookRuntime();
   t.after(() => r.dispose());

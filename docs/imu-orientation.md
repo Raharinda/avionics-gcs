@@ -216,10 +216,22 @@ Telemetry berupa JSON tanpa awalan, misalnya (ilustrasi):
 {"timestampMs":42000,"temperature":30.2,"pressure":994.4,"accelX":0.01,"accelY":0.02,"accelZ":9.806,"gyroX":0.0,"gyroY":0.0,"gyroZ":0.0,"imuValid":true,"calibrated":true,"referenceSet":true,"orientation":[1,0,0,0]}
 ```
 
-Saat belum ada acuan, `orientation` bernilai `null`. Kegagalan I2C ditandai
-`imuValid:false` dan sampel tersebut tidak diterbitkan sebagai telemetry
-valid oleh backend. BMP280 yang tidak tersedia menghasilkan `pressure:null`
-dan altitude kosong, tanpa mematikan orientasi MPU yang masih valid.
+Saat belum ada acuan, `orientation` bernilai `null`. Backend GCS menghitung
+status MPU6050 dan BMP280 secara terpisah:
+
+- `imuValid:true` jika keenam nilai `accelX/Y/Z` dan `gyroX/Y/Z` semuanya
+  finite dan bukan 0, terlepas dari flag `imuValid` dari transmitter. Satu
+  sumbu bernilai 0 sudah membuat status MPU tidak valid dan `orientation:null`.
+- `barometerValid:true` jika `pressure` finite dan lebih besar dari 0.
+  Tekanan 0, negatif, atau tidak tersedia menghasilkan `pressure:null` dan
+  altitude kosong. Field `temperature` berasal dari MPU6050, bukan BMP280,
+  sehingga tidak dipakai untuk menentukan status barometer.
+
+Paket dengan sumbu MPU bernilai 0 tetap diteruskan agar status kedua sensor
+bisa ditampilkan secara independen di panel health. Sensor yang masih valid
+tetap dapat ditampilkan. Pembacaan MPU atau suhu non-finite tetap ditolak.
+Aturan ini mengikuti kriteria semua sumbu bukan 0; nilai gyro 0 saat diam
+juga membuat status MPU tidak valid.
 
 ## Verifikasi pengembangan
 
