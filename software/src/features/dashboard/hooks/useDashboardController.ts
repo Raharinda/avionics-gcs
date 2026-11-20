@@ -133,27 +133,36 @@ export function useDashboardController() {
         setSerialLogResetVersion((version) => version + 1);
     }, [clearFireTimer, connection.stopTelemetry, telemetry.clearTelemetry]);
 
-    // Preserve the existing simulated command UI workflow; firmware does not implement ejection uplink yet.
-    const armSystem = useCallback(() => {
+    const armSystem = useCallback(async () => {
         const timestamp = formatLogTimestamp();
         if (!connection.connectionReady) {
             setLog(`${timestamp}  ARM_SYSTEM rejected — connect port first`);
             return;
         }
         if (commandState === "safe") {
-            setCommandState("armed");
-            setLog(`${timestamp}  ARM_SYSTEM armed (UI simulation) — awaiting FIRE command`);
+            try {
+                await sendSerialCommand("ARM_SYSTEM");
+                setCommandState("armed");
+                setLog(`${timestamp}  ARM_SYSTEM armed — awaiting FIRE command`);
+            } catch (error) {
+                setLog(`${timestamp}  ARM_SYSTEM rejected — ${error instanceof Error ? error.message : String(error)}`);
+            }
         }
     }, [connection.connectionReady, commandState]);
 
-    const disarmSystem = useCallback(() => {
+    const disarmSystem = useCallback(async () => {
         if (commandState === "armed") {
-            setCommandState("safe");
-            setLog(`${formatLogTimestamp()}  ARM_SYSTEM disarmed — fire controls disabled`);
+            try {
+                await sendSerialCommand("DISARM_SYSTEM");
+                setCommandState("safe");
+                setLog(`${formatLogTimestamp()}  ARM_SYSTEM disarmed — fire controls disabled`);
+            } catch (error) {
+                setLog(`${formatLogTimestamp()}  DISARM_SYSTEM rejected — ${error instanceof Error ? error.message : String(error)}`);
+            }
         }
     }, [commandState]);
 
-    const fireCharge = useCallback(() => {
+    const fireCharge = useCallback(async () => {
         const timestamp = formatLogTimestamp();
         if (!connection.connectionReady) {
             setLog(`${timestamp}  FIRE rejected — connect port first`);
@@ -166,23 +175,38 @@ export function useDashboardController() {
         clearFireTimer();
         const firingSource = connection.dataSource;
         setCommandState("firing");
-        setLog(`${timestamp}  SIMULATED FIRE — command sequence initiated`);
-        fireTimer.current = window.setTimeout(() => {
-            fireTimer.current = undefined;
-            if (activeSource.current !== firingSource)
-                return;
-            setCommandState("complete");
-            setPhase("Flight");
-            setLog(`${formatLogTimestamp()}  SIMULATED ACK FIRE — ejection workflow complete`);
-        }, 1200);
+        setLog(`${timestamp}  FIRE — sending command to ESP32 GPIO19`);
+        try {
+            await sendSerialCommand("FIRE");
+            fireTimer.current = window.setTimeout(() => {
+                fireTimer.current = undefined;
+                if (activeSource.current !== firingSource)
+                    return;
+                setCommandState("complete");
+                setPhase("Flight");
+                setLog(`${formatLogTimestamp()}  ACK FIRE — GPIO19 pulse complete (100 ms)`);
+            }, 100);
+        } catch (error) {
+            setCommandState("armed");
+            setLog(`${timestamp}  FIRE rejected — ${error instanceof Error ? error.message : String(error)}`);
+        }
     }, [clearFireTimer, commandState, connection.connectionReady, connection.dataSource]);
 
-    const resetCommands = useCallback(() => {
+    const resetCommands = useCallback(async () => {
         clearFireTimer();
         setCommandState("safe");
         setPhase("Initialization");
-        setLog(`${formatLogTimestamp()}  Command sequence reset`);
-    }, [clearFireTimer]);
+        if (connection.connectionReady) {
+            try {
+                await sendSerialCommand("RESET_FIRE");
+                setLog(`${formatLogTimestamp()}  Command sequence reset — fire output SAFE`);
+            } catch (error) {
+                setLog(`${formatLogTimestamp()}  UI reset complete — firmware reset rejected: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        } else {
+            setLog(`${formatLogTimestamp()}  Command sequence reset`);
+        }
+    }, [clearFireTimer, connection.connectionReady]);
 
     const refreshClock = useCallback(() => {
         const synchronizedAt = new Date();
