@@ -14,6 +14,8 @@
 
 namespace {
 constexpr int kSdaPin=21, kSclPin=22;
+constexpr int kFireMosfetPin=19;
+constexpr uint32_t kFirePulseMs=10000;
 constexpr uint32_t kSampleIntervalUs=10000, kTelemetryIntervalMs=100, kBmpIntervalMs=100;
 Mpu6050Reader mpu(Wire);
 Adafruit_BMP280 bmp(&Wire);
@@ -41,6 +43,9 @@ bool discardCommand=false;
 uint32_t lastLoRaSendMs=0;
 uint32_t loraSentPackets=0;
 radio::BusyWarning loraBusyWarning;
+bool fireArmed=false;
+bool fireLatched=false;
+uint32_t fireStartMs=0;
 
 bool present(uint8_t address) {
     Wire.beginTransmission(address);
@@ -178,7 +183,25 @@ void initSensors() {
     }
 }
 void command(const String& input) {
-    if (input=="IMU_STATUS") { printState(); printProgress(); }
+    if (input=="FIRE_STATUS") {
+        Serial.printf("FIRE_STATUS:{\"armed\":%s,\"latched\":%s,\"output\":%s,\"pin\":%d}\n",
+            fireArmed?"true":"false",fireLatched?"true":"false",digitalRead(kFireMosfetPin)?"true":"false",kFireMosfetPin);
+    } else if (input=="ARM_SYSTEM") {
+        if (fireLatched) Serial.println("ARM_ERROR:Sistem sudah ditembakkan; gunakan RESET_FIRE untuk me-reset status");
+        else { fireArmed=true; digitalWrite(kFireMosfetPin,LOW); Serial.println("ARM_ACK:Sistem fire siap"); }
+    } else if (input=="DISARM_SYSTEM") {
+        fireArmed=false; digitalWrite(kFireMosfetPin,LOW); Serial.println("DISARM_ACK:Sistem fire aman");
+    } else if (input=="RESET_FIRE") {
+        fireArmed=false; fireLatched=false; fireStartMs=0; digitalWrite(kFireMosfetPin,LOW);
+        Serial.println("RESET_FIRE_ACK:Fire state kembali SAFE");
+    } else if (input=="FIRE") {
+        if (!fireArmed) Serial.println("FIRE_ERROR:Sistem belum ARM");
+        else if (fireLatched) Serial.println("FIRE_ERROR:Fire sudah dilakukan sekali");
+        else {
+            fireLatched=true; fireArmed=false; fireStartMs=millis(); digitalWrite(kFireMosfetPin,HIGH);
+            Serial.printf("FIRE_ACK:MOSFET GPIO%d ON selama %lu ms\n",kFireMosfetPin,static_cast<unsigned long>(kFirePulseMs));
+        }
+    } else if (input=="IMU_STATUS") { printState(); printProgress(); }
     else if (input=="CALIBRATE_START") {
         if (!imuValid) { Serial.println("CALIBRATION_ERROR:MPU6050 belum memberikan data valid"); return; }
         calibration.start(); referenceSet=false;
@@ -340,6 +363,8 @@ void telemetry(uint32_t now) {
 } // namespace
 
 void setup() {
+    pinMode(kFireMosfetPin,OUTPUT);
+    digitalWrite(kFireMosfetPin,LOW);
     Serial.setTxBufferSize(2048);
     Serial.begin(115200); delay(500); commandBuffer.reserve(80);
     Serial.println("\nFirmware: imu3d-v2 | MPU6050 + BMP280 | SDA=D21 SCL=D22");
@@ -358,6 +383,11 @@ void loop() {
     const uint32_t now=millis();
     if (now-lastBmpMs>=kBmpIntervalMs) { lastBmpMs=now; readBmp(); }
     serviceLoRa(now);
+    if (fireStartMs!=0 && static_cast<uint32_t>(now-fireStartMs)>=kFirePulseMs) {
+        digitalWrite(kFireMosfetPin,LOW);
+        fireStartMs=0;
+        Serial.println("FIRE_COMPLETE:MOSFET OFF; pulse selesai");
+    }
     if (now-lastTelemetryMs>=kTelemetryIntervalMs) { lastTelemetryMs=now; telemetry(now); }
     if ((!mpuReady || !bmpReady) && now-lastRetryMs>=5000) {
         lastRetryMs=now; initSensors(); printState();
